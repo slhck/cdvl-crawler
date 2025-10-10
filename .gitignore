@@ -59,7 +59,4 @@ Thumbs.db
 # Logs
 *.log
 
-# Old scripts (now in src/)
-cdvl_crawler.py
-cdvl_download.py
-cdvl_utils.py
+index.html

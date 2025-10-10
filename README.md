@@ -6,29 +6,50 @@ Python tools for crawling and downloading videos from the [CDVL](https://cdvl.or
 
 **Contents:**
 
+- [Disclaimer](#disclaimer)
 - [What This Does](#what-this-does)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Usage](#usage)
   - [Crawling Metadata](#crawling-metadata)
   - [Downloading Videos](#downloading-videos)
+  - [Generating Static Site](#generating-static-site)
 - [Output Format](#output-format)
   - [Video Records](#video-records)
   - [Dataset Records](#dataset-records)
 - [Configuration File (`config.json`)](#configuration-file-configjson)
   - [Configuration Options](#configuration-options)
 - [API](#api)
-- [Privacy \& Ethics](#privacy--ethics)
 - [License](#license)
+
+## Disclaimer
+
+> [!CAUTION]
+>
+> This software is provided as-is as a general-purpose tool for interacting with the CDVL web content. The author provides this tool solely as software code and has no control over how it is used, no relationship with CDVL, and no obligation to enforce any third-party terms of service or licenses. You, the user, are solely and independently responsible for:
+>
+> - Obtaining proper authorization to access CDVL
+> - Complying with all applicable terms of service, license agreements, and usage policies
+> - Understanding and accepting the CDVL Database Content User License Agreement
+> - Your own actions and use of any content accessed through this tool
+> - Any legal consequences arising from your use of this tool
+>
+> While this tool displays the CDVL license agreement for user convenience, this does not constitute legal advice, license enforcement, or any guarantee of compliance. Displaying the license is informational only and does not create any legal relationship between the author and CDVL or the user.
+> Under no circumstances shall the author be held liable for any direct, indirect, incidental, special, consequential, or exemplary damages arising from your use or misuse of this tool. This includes, but is not limited to, any violation of terms of service, breach of license agreements, unauthorized access, or any other legal issues.
+>
+> Do not download more content than you would reasonably access manually through a web browser. Only use your own account credentials – never use credentials that do not belong to you. Respect the intellectual property rights and usage restrictions of content providers.
+>
+> By using this tool, you acknowledge that you have read, understood, and agree to this disclaimer. If you do not agree, do not use this software.
 
 ## What This Does
 
 This package provides a unified command-line tool for working with CDVL:
 
-**`cdvl-crawler`** with two subcommands:
+**`cdvl-crawler`** with three subcommands:
 
 - **`crawl`** - Crawls and extracts metadata from all videos and datasets on CDVL
 - **`download`** - Downloads individual videos by their ID
+- **`generate-site`** - Generates a searchable, interactive HTML site from crawled metadata
 
 Features:
 
@@ -39,6 +60,7 @@ Features:
 - **Structured Output**: JSONL format for easy data processing
 - **Progress Tracking**: Real-time progress bars showing success/empty/failed counts
 - **Download Management**: Handles large file downloads with progress indicators
+- **Static Site Generator**: Creates a beautiful, searchable HTML interface for browsing videos
 
 ## Requirements
 
@@ -53,6 +75,7 @@ Install [with `uvx`](https://docs.astral.sh/uv/getting-started/installation/):
 uvx cdvl-crawler --help
 uvx cdvl-crawler crawl --help
 uvx cdvl-crawler download --help
+uvx cdvl-crawler generate-site --help
 ```
 
 Or install with `pipx`:
@@ -110,14 +133,11 @@ uvx cdvl-crawler crawl
 uvx cdvl-crawler crawl --output-dir ./data
 ```
 
-**Available options:**
+For more options, run:
 
-- `--output-dir DIR` - Directory to save output files (default: current directory)
-- `--start-video-id N` - Starting video ID for crawling (default: 1 or resume from last)
-- `--start-dataset-id N` - Starting dataset ID for crawling (default: 1 or resume from last)
-- `--max-concurrent N` - Maximum number of concurrent requests (default: 5)
-- `--max-failures N` - Stop after N consecutive empty/failed responses (default: 10)
-- `--delay SECONDS` - Delay between request batches in seconds (default: 0.1)
+```bash
+uvx cdvl-crawler crawl --help
+```
 
 The crawler will automatically:
 
@@ -171,6 +191,24 @@ For more options:
 uvx cdvl-crawler download --help
 ```
 
+### Generating Static Site
+
+After crawling metadata, you can generate a beautiful, interactive HTML site to browse the video library:
+
+```bash
+# Generate site from videos.jsonl to index.html
+uvx cdvl-crawler generate-site
+
+# Specify custom input and output files
+uvx cdvl-crawler generate-site -i ./data/videos.jsonl -o ./website/index.html
+```
+
+For more options:
+
+```bash
+uvx cdvl-crawler generate-site --help
+```
+
 ## Output Format
 
 Output files use JSON Lines format (one JSON object per line).
@@ -181,16 +219,37 @@ Output files use JSON Lines format (one JSON object per line).
 {
   "id": 5,
   "url": "https://www.cdvl.org/members-section/view-file/?videoid=5",
-  "title": "Introduction to Video Quality",
-  "text": "Full text content...",
-  "paragraphs": ["Paragraph 1...", "Paragraph 2..."],
-  "links": [{"text": "Download", "href": "/path/to/file"}],
-  "media": [{"type": "video", "src": "/path/to/video.mp4"}],
-  "html": "<div>Raw HTML...</div>",
+  "paragraphs": [
+    "Description:Pan over a children's ball pit, seen from above using a crane.",
+    "Dataset:NTIA Source Scenes",
+    "Audio Specifications:16-bit stereo PCM. Talk in English with balls rustling.",
+    "Video Specification:The camera was a professional HDTV camera..."
+  ],
   "extracted_at": "2025-10-09T15:30:00+00:00",
-  "content_type": "video"
+  "content_type": "video",
+  "title": "NTIA children's ball pit from above, part 1, 525-line",
+  "links": [{"text": "NTIA T1.801.01", "href": "/members-section/search?dataset=3"}],
+  "media": [{"type": "img", "src": "/uploads/thumbnails/thumb_1.jpg"}],
+  "filename": "ntia_bpit1-525_original.avi",
+  "file_size": "242.50 MB"
 }
 ```
+
+Required fields:
+
+- `id`: Video ID number
+- `url`: Source URL on CDVL
+- `paragraphs`: Structured list of text content from the page
+- `extracted_at`: Timestamp when data was extracted (ISO 8601 format)
+- `content_type`: Always "video" for videos
+
+Optional fields:
+
+- `title`: Video title
+- `links`: Related links found on the page
+- `media`: Images and media elements
+- `filename`: Download filename (if available)
+- `file_size`: File size (if available)
 
 ### Dataset Records
 
@@ -198,16 +257,28 @@ Output files use JSON Lines format (one JSON object per line).
 {
   "id": 7,
   "url": "https://www.cdvl.org/members-section/search?dataset=7",
-  "title": "Mobile Quality Dataset",
-  "text": "Full text content...",
-  "paragraphs": ["Description..."],
-  "links": [{"text": "Download", "href": "/download/dataset7.zip"}],
-  "tables_count": 2,
-  "html": "<div>Raw HTML...</div>",
+  "paragraphs": ["Description of the dataset...", "Additional information..."],
   "extracted_at": "2025-10-09T15:30:00+00:00",
-  "content_type": "dataset"
+  "content_type": "dataset",
+  "title": "Mobile Quality Dataset",
+  "links": [{"text": "Video 123", "href": "/members-section/view-file/?videoid=123"}],
+  "tables_count": 2
 }
 ```
+
+Required fields:
+
+- `id`: Dataset ID number
+- `url`: Source URL on CDVL
+- `paragraphs`: Structured list of text content from the page
+- `extracted_at`: Timestamp when data was extracted (ISO 8601 format)
+- `content_type`: Always "dataset" for datasets
+
+Optional fields:
+
+- `title`: Dataset title
+- `links`: Related links found on the page
+- `tables_count`: Number of tables in the dataset page
 
 Here are some processing examples using `jq`.
 
@@ -229,10 +300,10 @@ Extract all titles:
 jq -r '.title' videos.jsonl
 ```
 
-Filter by keyword:
+Filter by keyword in paragraphs:
 
 ```bash
-jq 'select(.text | contains("codec"))' videos.jsonl
+jq 'select(.paragraphs | join(" ") | contains("codec"))' videos.jsonl
 ```
 
 Convert to CSV:
@@ -302,7 +373,7 @@ You can also use the package programmatically:
 
 ```python
 import asyncio
-from cdvl_crawler import CDVLCrawler, CDVLDownloader
+from cdvl_crawler import CDVLCrawler, CDVLDownloader, CDVLSiteGenerator
 
 # Crawl videos and datasets
 async def crawl():
@@ -323,17 +394,20 @@ async def download():
 
     await downloader._close_session()
 
+# Generate static site
+def generate_site():
+    generator = CDVLSiteGenerator(
+        input_file="./data/videos.jsonl",
+        output_file="./website/index.html"
+    )
+    success = generator.generate()
+    print(f"Site generated: {success}")
+
 # Run
 asyncio.run(crawl())
 asyncio.run(download())
+generate_site()
 ```
-
-## Privacy & Ethics
-
-- **Rate Limiting**: Use reasonable delays to avoid server strain (default: 0.1s between batches)
-- **Credentials**: Keep your `config.json` secure and never share credentials
-- **Usage Policies**: Respect CDVL's terms of service and usage policies
-- **Personal Use**: Only use your own account credentials
 
 ## License
 

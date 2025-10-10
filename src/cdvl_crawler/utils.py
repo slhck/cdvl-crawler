@@ -16,6 +16,104 @@ from yarl import URL
 
 logger = logging.getLogger(__name__)
 
+# CDVL Database Content User License Agreement
+CDVL_LICENSE = """
+The owner of the CDVL would like you to read and accept the following terms.
+
+================================================================================
+DATABASE CONTENT USER CLICK-THROUGH AGREEMENT
+(for individuals who use the video clips posted on the website)
+================================================================================
+
+Carefully read the following agreement. To use this website and any content
+posted or otherwise included thereon, you must accept and agree to be bound by
+this agreement.
+
+Unless otherwise indicated by you at the time of acceptance, this agreement
+shall be considered legally binding on you as an individual.
+
+Database Content User License:
+
+NTIA/ITS hereby grants permission for you (or your organization) to use the
+Consumer Digital Video Library Website ("CDVL Web") and any video clips or
+other content posted thereon ("Website Content"), solely for internal research
+and development purposes to process and assess audio and/or video quality. You
+will not use, copy, reproduce, distribute, modify, prepare derivative works,
+transmit, broadcast, display, sell, license or otherwise exploit the Website
+Content for any other purpose whatsoever. You shall not distribute any Website
+Content to any third party. You agree to destroy any and all copies of Website
+Content, if any are made, upon conclusion of the relevant audio or video
+processing and/or testing.
+
+NTIA/ITS reserves the right to withdraw permission to use any Website Content
+at anytime for any reason.
+
+IN NO EVENT SHALL NTIA/ITS BE LIABLE TO ANY PART FOR DIRECT, INDIRECT, SPECIAL,
+INCIDENTAL, OR CONSEQUENTIAL DAMAGES, INCLUDING LOST PROFITS, ARISING OUT OF THE
+USE OF THE WEBSITE OR ANY VIDEO CLIP OR DOCUMENTATION POSTED OR OTHERWISE
+INCLUDED THEREON, EVEN IF NTIA/ITS HAS BEEN ADVISED OF THE POSSIBLITY OF SUCH
+DAMAGE. NTIA/ITS SPECIFICALLY DISCLAIMS ANY WARRANTIES, INCLUDING, BUT NOT
+LIMTIED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE. THE WEBSITE CONTENT, INCLUDING ANY VIDEO CLIPS POSTED OR
+OTHERWISE INCLUDED THEREON, IS PROVIDED HEREUNDER ON AN "AS-IS" BASIS FOR
+INTERNAL USES CONSISTENT WITH THE TERMS OF THIS AGREEMENT.
+
+You agree to defend, indemnify and hold harmless NTIA/ITS and the U.S.
+Department of Commerce and their officers, employees and agents from and against
+any and all claims, damages, losses, liabilities, costs, and expense (including
+but not limited to reasonable attorneys' fees) arising from (1) your violation
+of any term of this Agreement; or, (2) your use of the Website Content outside
+the scope of this Agreement. This defense and indemnification obligation will
+survive the expiration or termination of this Agreement.
+
+You agree that the laws of the United States as interpreted and applied by the
+Federal courts in the District of Columbia shall apply to this Agreement,
+regardless of the conflict of laws provisions thereof, that this Agreement
+constitutes the entire understanding between you and NTIA/ITS with respect to
+the Website Content. If any provision of this Agreement is deemed invalid by a
+court of competent jurisdiction, the invalidity of such provision shall not
+affect the validity of the remaining provisions of this Agreement, which shall
+remain in full force and effect. No waiver of any term of this Agreement shall
+be deemed a further or continuing waiver of such term or any other term.
+
+You shall use reasonable efforts to acknowledge the CDVL and NTIA/ITS in any
+publication that is based upon the use of the CDVL Web.
+
+You agree that this Agreement may be assigned by NTIA/ITS to any third party
+who assumes the management of the CDVL Web.
+
+================================================================================
+"""
+
+
+def require_license_acceptance(auto_accept: bool = False) -> bool:
+    """
+    Display CDVL license agreement and require user acceptance
+
+    Args:
+        auto_accept: If True, automatically accept the license without prompting
+
+    Returns:
+        True if license was accepted, False otherwise
+    """
+    if auto_accept:
+        logger.info("License automatically accepted via --accept-license flag")
+        return True
+
+    print(CDVL_LICENSE)
+    print("\nBy using this tool to access CDVL content, you agree to the terms above.")
+
+    while True:
+        response = input("\nDo you accept these terms? (yes/no): ").strip().lower()
+        if response in ("yes", "y"):
+            logger.info("License accepted by user")
+            return True
+        elif response in ("no", "n"):
+            logger.info("License rejected by user")
+            return False
+        else:
+            print("Please answer 'yes' or 'no'")
+
 
 def get_default_config() -> Dict[str, Any]:
     """Get default configuration with hardcoded sensible values"""
@@ -38,6 +136,11 @@ def get_default_config() -> Dict[str, Any]:
         "max_concurrent_requests": 5,
         "max_consecutive_failures": 10,
         "request_delay": 0.1,
+        # Probing parameters for handling ID gaps
+        "probe_step": 100,  # How far ahead to jump when probing for gaps
+        "max_probe_attempts": 20,  # Max probe attempts before giving up (20 * 100 = 2000 ID range)
+        "max_video_id": None,  # Optional: Stop crawling videos at this ID
+        "max_dataset_id": None,  # Optional: Stop crawling datasets at this ID
     }
 
 
@@ -61,7 +164,11 @@ def load_config(config_path: Optional[str]) -> Dict[str, Any]:
         # Deep merge: user config overrides defaults
         # For nested dicts like endpoints and headers, merge individually
         for key, value in user_config.items():
-            if key in config and isinstance(config[key], dict) and isinstance(value, dict):
+            if (
+                key in config
+                and isinstance(config[key], dict)
+                and isinstance(value, dict)
+            ):
                 config[key].update(value)
             else:
                 config[key] = value
@@ -203,9 +310,7 @@ async def login_to_cdvl(
                 logger.info("✓ Login successful!")
 
                 # Verify we have session cookies
-                cookies = session.cookie_jar.filter_cookies(
-                    URL("https://www.cdvl.org")
-                )
+                cookies = session.cookie_jar.filter_cookies(URL("https://www.cdvl.org"))
                 if ".AspNetCore.Identity.Application" in [
                     c.key for c in cookies.values()
                 ]:

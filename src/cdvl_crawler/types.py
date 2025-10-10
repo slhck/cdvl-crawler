@@ -22,8 +22,7 @@ class MediaDict(TypedDict):
 class _RequiredContentFields(TypedDict):
     """Required fields for content data"""
 
-    html: str
-    text: str
+    paragraphs: list[str]
     extracted_at: str
     content_type: Literal["video", "dataset"]
 
@@ -32,10 +31,11 @@ class _OptionalContentFields(TypedDict, total=False):
     """Optional fields for content data"""
 
     title: str
-    paragraphs: list[str]
     links: list[LinkDict]
     tables_count: int
     media: list[MediaDict]
+    filename: str
+    file_size: str
 
 
 class PartialContentData(_RequiredContentFields, _OptionalContentFields):

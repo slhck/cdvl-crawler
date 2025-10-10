@@ -11,6 +11,8 @@ import sys
 
 from cdvl_crawler.crawler import CDVLCrawler
 from cdvl_crawler.downloader import CDVLDownloader
+from cdvl_crawler.generator import CDVLSiteGenerator
+from cdvl_crawler.utils import require_license_acceptance
 
 # Configure logging
 logging.basicConfig(
@@ -76,6 +78,31 @@ def main():
         type=float,
         help="Delay between request batches in seconds (default: 0.1)",
     )
+    crawl_parser.add_argument(
+        "--probe-step",
+        type=int,
+        help="How far ahead to jump when probing for ID gaps (default: 100)",
+    )
+    crawl_parser.add_argument(
+        "--max-probe-attempts",
+        type=int,
+        help="Max probe attempts before giving up (default: 20, meaning 20*100=2000 ID range)",
+    )
+    crawl_parser.add_argument(
+        "--max-video-id",
+        type=int,
+        help="Maximum video ID to crawl to (optional, no limit by default)",
+    )
+    crawl_parser.add_argument(
+        "--max-dataset-id",
+        type=int,
+        help="Maximum dataset ID to crawl to (optional, no limit by default)",
+    )
+    crawl_parser.add_argument(
+        "--accept-license",
+        action="store_true",
+        help="Automatically accept the CDVL license agreement without prompting",
+    )
 
     # Download command
     download_parser = subparsers.add_parser(
@@ -121,6 +148,32 @@ Examples:
         default=".",
         help="Directory to save downloaded files (default: current directory)",
     )
+    download_parser.add_argument(
+        "--accept-license",
+        action="store_true",
+        help="Automatically accept the CDVL license agreement without prompting",
+    )
+
+    # Generate site command
+    site_parser = subparsers.add_parser(
+        "generate-site",
+        help="Generate a static HTML site from videos.jsonl",
+        description="Generate a searchable, sortable HTML table of all videos",
+    )
+    site_parser.add_argument(
+        "-i",
+        "--input",
+        type=str,
+        default="videos.jsonl",
+        help="Input JSONL file (default: videos.jsonl)",
+    )
+    site_parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default="index.html",
+        help="Output HTML file (default: index.html)",
+    )
 
     args = parser.parse_args()
 
@@ -134,10 +187,17 @@ Examples:
         asyncio.run(run_crawler(args))
     elif args.command == "download":
         asyncio.run(run_downloader(args))
+    elif args.command == "generate-site":
+        run_generator(args)
 
 
 async def run_crawler(args):
     """Run the crawler"""
+    # Check license acceptance
+    if not require_license_acceptance(auto_accept=args.accept_license):
+        logger.error("License agreement not accepted. Exiting.")
+        sys.exit(1)
+
     # Build overrides dict from CLI arguments
     overrides = {}
     if args.start_video_id is not None:
@@ -150,6 +210,14 @@ async def run_crawler(args):
         overrides["max_consecutive_failures"] = args.max_failures
     if args.delay is not None:
         overrides["request_delay"] = args.delay
+    if args.probe_step is not None:
+        overrides["probe_step"] = args.probe_step
+    if args.max_probe_attempts is not None:
+        overrides["max_probe_attempts"] = args.max_probe_attempts
+    if args.max_video_id is not None:
+        overrides["max_video_id"] = args.max_video_id
+    if args.max_dataset_id is not None:
+        overrides["max_dataset_id"] = args.max_dataset_id
 
     crawler = CDVLCrawler(
         config_path=args.config, output_dir=args.output_dir, overrides=overrides
@@ -159,6 +227,11 @@ async def run_crawler(args):
 
 async def run_downloader(args):
     """Run the downloader with parsed arguments"""
+    # Check license acceptance
+    if not require_license_acceptance(auto_accept=args.accept_license):
+        logger.error("License agreement not accepted. Exiting.")
+        sys.exit(1)
+
     # Parse video IDs
     try:
         video_ids = [int(id.strip()) for id in args.video_ids.split(",")]
@@ -215,6 +288,19 @@ async def run_downloader(args):
 
     finally:
         await downloader._close_session()
+
+
+def run_generator(args):
+    """Run the static site generator"""
+    generator = CDVLSiteGenerator(input_file=args.input, output_file=args.output)
+
+    if generator.generate():
+        print(f"\n✓ Static site generated successfully: {args.output}")
+        print(f"  Open the file in your browser to view the video library")
+        sys.exit(0)
+    else:
+        logger.error("Failed to generate static site")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
