@@ -104,7 +104,9 @@ def require_license_acceptance(auto_accept: bool = False) -> bool:
     print("\nBy using this tool to access CDVL content, you agree to the terms above.")
 
     while True:
-        response = input("\nDo you accept these terms? (yes/no): ").strip().lower()
+        response = (
+            input("\nDo you accept these terms? Type 'yes' or 'no': ").strip().lower()
+        )
         if response in ("yes", "y"):
             logger.info("License accepted by user")
             return True

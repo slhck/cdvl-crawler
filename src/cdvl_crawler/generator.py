@@ -114,13 +114,19 @@ class CDVLSiteGenerator:
         <div class="sticky top-0 z-40 bg-gray-50 pb-4 -mx-4 px-4 pt-0">
             <div class="bg-white rounded-lg shadow-md p-4">
                 <div class="flex flex-col md:flex-row gap-4 items-center justify-between">
-                    <div class="flex-1 w-full">
+                    <div class="flex-1 w-full relative">
                         <input
                             type="text"
                             id="searchInput"
                             placeholder="Search videos by title, ID, filename, or description..."
                             class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         >
+                        <div id="searchSpinner" class="hidden absolute right-3 top-1/2 -translate-y-1/2">
+                            <svg class="animate-spin h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        </div>
                     </div>
                     <div class="flex gap-2">
                         <span id="videoCount" class="text-sm text-gray-600 px-3 py-2">
@@ -177,7 +183,41 @@ class CDVLSiteGenerator:
         </div>
     </div>
 
-    <!-- Modal -->
+    <!-- Command Modal -->
+    <div id="commandModal" class="modal fixed inset-0 bg-black bg-opacity-60 items-center justify-center z-[60] p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full">
+            <div class="bg-gradient-to-r from-green-600 to-emerald-600 px-6 py-5 flex justify-between items-center rounded-t-xl shadow-lg">
+                <h2 class="text-2xl font-bold text-white">Download Command</h2>
+                <button
+                    onclick="closeCommandModal()"
+                    class="text-white hover:text-gray-200 transition-colors"
+                    title="Close"
+                >
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="px-6 py-6">
+                <p class="text-gray-700 mb-4">Click the command below to copy it to your clipboard:</p>
+                <div class="relative">
+                    <input
+                        id="commandInput"
+                        type="text"
+                        readonly
+                        class="w-full px-4 py-3 font-mono text-sm bg-gray-50 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-200 cursor-pointer transition-all"
+                        onclick="selectAndCopyCommand()"
+                    >
+                    <div id="copyFeedback" class="hidden absolute right-3 top-3 bg-green-600 text-white px-3 py-1 rounded-md text-sm font-semibold">
+                        Copied!
+                    </div>
+                </div>
+                <p class="text-sm text-gray-500 mt-3">Run this command in your terminal to download the selected video(s).</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Video Modal -->
     <div id="videoModal" class="modal fixed inset-0 bg-black bg-opacity-60 items-center justify-center z-50 p-4 backdrop-blur-sm">
         <div class="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div class="sticky top-0 bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5 flex justify-between items-center rounded-t-xl shadow-lg z-10">
@@ -204,16 +244,70 @@ class CDVLSiteGenerator:
         let filteredVideos = [...videos];
         let sortState = {{ column: 'id', ascending: true }};
         let selectedVideoIds = new Set();
+        let searchTimeout = null;
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {{
             renderTable();
             updateDownloadButton();
+            checkHashAndOpenModal();
         }});
 
-        // Search functionality
-        document.getElementById('searchInput').addEventListener('input', (e) => {{
-            const query = e.target.value.toLowerCase();
+        // Handle hash changes (browser back/forward)
+        window.addEventListener('hashchange', () => {{
+            checkHashAndOpenModal();
+        }});
+
+        // Check URL hash and open modal if present
+        function checkHashAndOpenModal() {{
+            const hash = window.location.hash;
+            if (hash && hash.startsWith('#')) {{
+                const videoId = parseInt(hash.substring(1));
+                if (!isNaN(videoId)) {{
+                    const video = videos.find(v => v.id === videoId);
+                    if (video) {{
+                        openModal(videoId);
+                    }}
+                }}
+            }}
+        }}
+
+        // Helper function to clean video paragraphs (remove unwanted content)
+        function getCleanParagraphs(video) {{
+            return (video.paragraphs || [])
+                .filter(p => p && p.trim() && !p.includes('TagBuilder') && !p.includes('Click here to generate'));
+        }}
+
+        // Helper function to convert relative URLs to absolute
+        function makeAbsoluteUrl(url) {{
+            if (!url) return url;
+            // If URL starts with http:// or https://, it's already absolute
+            if (url.startsWith('http://') || url.startsWith('https://')) {{
+                return url;
+            }}
+            // If URL starts with //, it's protocol-relative
+            if (url.startsWith('//')) {{
+                return 'https:' + url;
+            }}
+            // Otherwise, it's relative - prefix with CDVL base URL
+            const baseUrl = 'https://www.cdvl.org';
+            return url.startsWith('/') ? baseUrl + url : baseUrl + '/' + url;
+        }}
+
+        // Debounce utility
+        function debounce(func, delay) {{
+            return function(...args) {{
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => func.apply(this, args), delay);
+            }};
+        }}
+
+        // Search functionality with debounce
+        function performSearch(query) {{
+            // Show spinner
+            document.getElementById('searchSpinner').classList.remove('hidden');
+
+            // Filter videos
             filteredVideos = videos.filter(video => {{
                 const searchText = [
                     video.id.toString(),
@@ -223,8 +317,24 @@ class CDVLSiteGenerator:
                 ].join(' ').toLowerCase();
                 return searchText.includes(query);
             }});
+
+            // Render and hide spinner
             renderTable();
             updateVideoCount();
+            document.getElementById('searchSpinner').classList.add('hidden');
+        }}
+
+        document.getElementById('searchInput').addEventListener('input', (e) => {{
+            const query = e.target.value.toLowerCase();
+
+            // Show spinner immediately for visual feedback
+            document.getElementById('searchSpinner').classList.remove('hidden');
+
+            // Debounced search
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {{
+                performSearch(query);
+            }}, 300); // 300ms delay
         }});
 
         // Render table
@@ -235,8 +345,9 @@ class CDVLSiteGenerator:
             filteredVideos.forEach(video => {{
                 const row = document.createElement('tr');
                 row.className = 'hover:bg-gray-50 transition-colors';
+                row.id = `video-${{video.id}}`;
 
-                const description = (video.paragraphs || []).join(' ');
+                const description = getCleanParagraphs(video).join(' ');
                 const excerpt = description.length > 150
                     ? description.substring(0, 150).split(' ').slice(0, -1).join(' ') + '...'
                     : description;
@@ -359,21 +470,18 @@ class CDVLSiteGenerator:
         function generateDownloadCommand() {{
             const videoIds = Array.from(selectedVideoIds).sort((a, b) => a - b);
             const command = `uvx cdvl-crawler download ${{videoIds.join(',')}}`;
-
-            // Copy to clipboard
-            navigator.clipboard.writeText(command).then(() => {{
-                // Show command in a modal-like alert
-                alert(`Command copied to clipboard!\\n\\n${{command}}`);
-            }}).catch(() => {{
-                // Fallback: show command to copy manually
-                prompt('Copy this command:', command);
-            }});
+            showCommandModal(command);
         }}
 
         // Modal functionality
         function openModal(videoId) {{
             const video = videos.find(v => v.id === videoId);
             if (!video) return;
+
+            // Update URL hash
+            if (window.location.hash !== `#${{videoId}}`) {{
+                window.history.pushState(null, '', `#${{videoId}}`);
+            }}
 
             document.getElementById('modalTitle').textContent = video.title || 'Video Details';
 
@@ -417,8 +525,7 @@ class CDVLSiteGenerator:
                             Description
                         </h3>
                         <div class="space-y-3">
-                            ${{video.paragraphs
-                                .filter(p => p && p.trim() && !p.includes('TagBuilder') && !p.includes('Click here to generate'))
+                            ${{getCleanParagraphs(video)
                                 .map(p => `<p class="text-gray-700 leading-relaxed">${{p}}</p>`)
                                 .join('') || '<p class="text-gray-700">No description available</p>'
                             }}
@@ -440,7 +547,7 @@ class CDVLSiteGenerator:
                                     <svg class="w-4 h-4 mr-2 mt-1 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
                                     </svg>
-                                    <a href="${{link.href}}" target="_blank" class="text-blue-600 hover:text-blue-800 hover:underline break-all">
+                                    <a href="${{makeAbsoluteUrl(link.href)}}" target="_blank" class="text-blue-600 hover:text-blue-800 hover:underline break-all">
                                         ${{link.text}}
                                     </a>
                                 </li>
@@ -505,28 +612,63 @@ class CDVLSiteGenerator:
 
         function closeModal() {{
             document.getElementById('videoModal').classList.remove('active');
+            // Clear URL hash
+            if (window.location.hash) {{
+                window.history.pushState(null, '', window.location.pathname);
+            }}
         }}
 
         function downloadSingleVideo(videoId) {{
-            const command = `cdvl-crawler download ${{videoId}}`;
-            navigator.clipboard.writeText(command).then(() => {{
-                alert(`Command copied to clipboard!\\n\\n${{command}}`);
-            }}).catch(() => {{
-                prompt('Copy this command:', command);
+            const command = `uvx cdvl-crawler download ${{videoId}}`;
+            showCommandModal(command);
+        }}
+
+        // Command modal functionality
+        function showCommandModal(command) {{
+            const input = document.getElementById('commandInput');
+            input.value = command;
+            document.getElementById('commandModal').classList.add('active');
+        }}
+
+        function closeCommandModal() {{
+            document.getElementById('commandModal').classList.remove('active');
+        }}
+
+        function selectAndCopyCommand() {{
+            const input = document.getElementById('commandInput');
+            input.select();
+            input.setSelectionRange(0, 99999); // For mobile devices
+
+            navigator.clipboard.writeText(input.value).then(() => {{
+                // Show feedback
+                const feedback = document.getElementById('copyFeedback');
+                feedback.classList.remove('hidden');
+                setTimeout(() => {{
+                    feedback.classList.add('hidden');
+                }}, 2000);
+            }}).catch(err => {{
+                console.error('Failed to copy:', err);
             }});
         }}
 
-        // Close modal on escape key
+        // Close modals on escape key
         document.addEventListener('keydown', (e) => {{
             if (e.key === 'Escape') {{
+                closeModal();
+                closeCommandModal();
+            }}
+        }});
+
+        // Close modals on backdrop click
+        document.getElementById('videoModal').addEventListener('click', (e) => {{
+            if (e.target.id === 'videoModal') {{
                 closeModal();
             }}
         }});
 
-        // Close modal on backdrop click
-        document.getElementById('videoModal').addEventListener('click', (e) => {{
-            if (e.target.id === 'videoModal') {{
-                closeModal();
+        document.getElementById('commandModal').addEventListener('click', (e) => {{
+            if (e.target.id === 'commandModal') {{
+                closeCommandModal();
             }}
         }});
     </script>

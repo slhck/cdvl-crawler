@@ -38,6 +38,7 @@ Python tools for crawling and downloading videos from the [CDVL](https://cdvl.or
 > Under no circumstances shall the author be held liable for any direct, indirect, incidental, special, consequential, or exemplary damages arising from your use or misuse of this tool. This includes, but is not limited to, any violation of terms of service, breach of license agreements, unauthorized access, or any other legal issues.
 >
 > Do not download more content than you would reasonably access manually through a web browser. Only use your own account credentials – never use credentials that do not belong to you. Respect the intellectual property rights and usage restrictions of content providers.
+> Specifically, have a look at the [License page](https://www.cdvl.org/license/) before use.
 >
 > By using this tool, you acknowledge that you have read, understood, and agree to this disclaimer. If you do not agree, do not use this software.
 
