@@ -27,7 +27,11 @@
   },
   "start_video_id": 1,
   "start_dataset_id": 1,
+  "max_video_id": null,
+  "max_dataset_id": null,
   "max_concurrent_requests": 5,
   "max_consecutive_failures": 1000,
-  "request_delay": 0.1
+  "request_delay": 0.1,
+  "probe_step": 100,
+  "max_probe_attempts": 20
 }

@@ -132,6 +132,21 @@ uvx cdvl-crawler crawl
 
 # Save to specific directory
 uvx cdvl-crawler crawl --output-dir ./data
+
+# Accept license automatically (useful for automation/scripts)
+uvx cdvl-crawler crawl --accept-license
+
+# Crawl with custom concurrency and delays
+uvx cdvl-crawler crawl --max-concurrent 10 --delay 0.2
+
+# Crawl up to specific ID limits
+uvx cdvl-crawler crawl --max-video-id 3000 --max-dataset-id 500
+
+# Adjust failure threshold (stop after N consecutive failures)
+uvx cdvl-crawler crawl --max-failures 2000
+
+# Advanced: customize ID gap probing
+uvx cdvl-crawler crawl --probe-step 50 --max-probe-attempts 40
 ```
 
 For more options, run:
@@ -175,6 +190,9 @@ uvx cdvl-crawler download 42
 
 # Download to specific directory
 uvx cdvl-crawler download 42 --output-dir ./downloads
+
+# Accept license automatically (useful for automation/scripts)
+uvx cdvl-crawler download 42 --accept-license
 
 # Download multiple videos (comma-separated)
 uvx cdvl-crawler download 1,5,10,20 --output-dir ./videos
@@ -343,9 +361,13 @@ If you want to customize settings permanently or override defaults, create a `co
   },
   "start_video_id": 1,
   "start_dataset_id": 1,
+  "max_video_id": null,
+  "max_dataset_id": null,
   "max_concurrent_requests": 5,
-  "max_consecutive_failures": 10,
-  "request_delay": 0.1
+  "max_consecutive_failures": 1000,
+  "request_delay": 0.1,
+  "probe_step": 100,
+  "max_probe_attempts": 20
 }
 ```
 
@@ -353,20 +375,24 @@ If you want to customize settings permanently or override defaults, create a `co
 
 All settings are optional with sensible defaults. CLI options override config file values.
 
-| Setting                    | Default                              | CLI Option            | Description                              |
-| -------------------------- | ------------------------------------ | --------------------- | ---------------------------------------- |
-| `username`                 | (from env `CDVL_USERNAME` or prompt) | -                     | Your CDVL account email                  |
-| `password`                 | (from env `CDVL_PASSWORD` or prompt) | -                     | Your CDVL account password               |
-| `start_video_id`           | 1                                    | `--start-video-id`    | Starting video ID for crawling           |
-| `start_dataset_id`         | 1                                    | `--start-dataset-id`  | Starting dataset ID for crawling         |
-| `max_concurrent_requests`  | 5                                    | `--max-concurrent`    | Number of parallel requests              |
-| `max_consecutive_failures` | 10                                   | `--max-failures`      | Stop after N consecutive empty responses |
-| `request_delay`            | 0.1                                  | `--delay`             | Delay between request batches (seconds)  |
-| `videos_file`              | videos.jsonl                         | -                     | Output filename for video metadata       |
-| `datasets_file`            | datasets.jsonl                       | -                     | Output filename for dataset metadata     |
-| `endpoints.video_base_url` | cdvl.org members section             | -                     | Base URL for video pages                 |
-| `endpoints.dataset_base_url` | cdvl.org members section           | -                     | Base URL for dataset pages               |
-| `headers`                  | Browser-like headers                 | -                     | HTTP headers (User-Agent, Accept, etc.)  |
+| Setting                    | Default                              | CLI Option            | Description                                      |
+| -------------------------- | ------------------------------------ | --------------------- | ------------------------------------------------ |
+| `username`                 | (from env `CDVL_USERNAME` or prompt) | -                     | Your CDVL account email                          |
+| `password`                 | (from env `CDVL_PASSWORD` or prompt) | -                     | Your CDVL account password                       |
+| `start_video_id`           | 1                                    | `--start-video-id`    | Starting video ID for crawling                   |
+| `start_dataset_id`         | 1                                    | `--start-dataset-id`  | Starting dataset ID for crawling                 |
+| `max_video_id`             | None                                 | `--max-video-id`      | Maximum video ID to crawl (optional)             |
+| `max_dataset_id`           | None                                 | `--max-dataset-id`    | Maximum dataset ID to crawl (optional)           |
+| `max_concurrent_requests`  | 5                                    | `--max-concurrent`    | Number of parallel requests                      |
+| `max_consecutive_failures` | 1000                                 | `--max-failures`      | Stop after N consecutive empty/failed responses  |
+| `request_delay`            | 0.1                                  | `--delay`             | Delay between request batches (seconds)          |
+| `probe_step`               | 100                                  | `--probe-step`        | How far ahead to jump when probing for ID gaps   |
+| `max_probe_attempts`       | 20                                   | `--max-probe-attempts`| Max probe attempts (20*100=2000 ID range)        |
+| `videos_file`              | videos.jsonl                         | -                     | Output filename for video metadata               |
+| `datasets_file`            | datasets.jsonl                       | -                     | Output filename for dataset metadata             |
+| `endpoints.video_base_url` | cdvl.org members section             | -                     | Base URL for video pages                         |
+| `endpoints.dataset_base_url` | cdvl.org members section           | -                     | Base URL for dataset pages                       |
+| `headers`                  | Browser-like headers                 | -                     | HTTP headers (User-Agent, Accept, etc.)          |
 
 ## API
 

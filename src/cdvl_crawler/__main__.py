@@ -71,7 +71,7 @@ def main():
     crawl_parser.add_argument(
         "--max-failures",
         type=int,
-        help="Stop after N consecutive empty/failed responses (default: 10)",
+        help="Stop after N consecutive empty/failed responses (default: 1000)",
     )
     crawl_parser.add_argument(
         "--delay",
@@ -296,7 +296,7 @@ def run_generator(args):
 
     if generator.generate():
         print(f"\n✓ Static site generated successfully: {args.output}")
-        print(f"  Open the file in your browser to view the video library")
+        print("  Open the file in your browser to view the video library")
         sys.exit(0)
     else:
         logger.error("Failed to generate static site")
