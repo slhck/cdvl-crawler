@@ -1,14 +1,15 @@
-Changelog
-=========
+## [0.4.0] - 2025-10-13
 
+### 🐛 Bug Fixes
 
-(unreleased)
-------------
-- Bump version to 0.3.0. [Werner Robitza]
-- Improve generator. [Werner Robitza]
-- Bump version to 0.2.0. [Werner Robitza]
-- Add uv.lock. [Werner Robitza]
-- Update crawler, static site generator. [Werner Robitza]
-- Initial commit. [Werner Robitza]
+- Readme and default values
 
+### 🚜 Refactor
 
+- Update crawling logic to use sequential scanning and increase failure limits
+
+### ⚙️ Miscellaneous Tasks
+
+- Add commitizen for conventional commits
+- Bump version to 0.4.0
+## [0.2.0] - 2025-10-10
