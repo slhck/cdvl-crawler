@@ -136,11 +136,8 @@ def get_default_config() -> Dict[str, Any]:
         "start_video_id": 1,
         "start_dataset_id": 1,
         "max_concurrent_requests": 5,
-        "max_consecutive_failures": 10,
+        "max_consecutive_failures": 1000,  # Stop after 1000 consecutive empty/failed responses
         "request_delay": 0.1,
-        # Probing parameters for handling ID gaps
-        "probe_step": 100,  # How far ahead to jump when probing for gaps
-        "max_probe_attempts": 20,  # Max probe attempts before giving up (20 * 100 = 2000 ID range)
         "max_video_id": None,  # Optional: Stop crawling videos at this ID
         "max_dataset_id": None,  # Optional: Stop crawling datasets at this ID
     }

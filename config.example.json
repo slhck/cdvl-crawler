@@ -28,6 +28,6 @@
   "start_video_id": 1,
   "start_dataset_id": 1,
   "max_concurrent_requests": 5,
-  "max_consecutive_failures": 10,
+  "max_consecutive_failures": 1000,
   "request_delay": 0.1
 }

@@ -300,20 +300,15 @@ class CDVLCrawler:
             return None
 
     async def _crawl_videos(self, start_id: int = 1, max_concurrent: int = 5):
-        """Crawl all videos with parallel requests and gap probing"""
+        """Crawl all videos with parallel requests and sequential scanning"""
         logger.info("Starting video crawler...")
-        output_file = str(
-            self.output_dir / self.config["output"]["videos_file"]
-        )
+        output_file = str(self.output_dir / self.config["output"]["videos_file"])
         consecutive_failures = 0
-        max_failures = self.config.get("max_consecutive_failures", 10)
-        probe_step = self.config.get("probe_step", 100)
-        max_probe_attempts = self.config.get("max_probe_attempts", 20)
+        max_failures = self.config.get("max_consecutive_failures", 1000)
         max_video_id = self.config.get("max_video_id")
 
         current_id = start_id
         semaphore = asyncio.Semaphore(max_concurrent)
-        probe_attempts = 0
 
         # Create progress bar
         self.video_pbar = tqdm(
@@ -326,79 +321,24 @@ class CDVLCrawler:
 
         try:
             while True:
-                # Check if we've reached the max ID limit
-                if max_video_id is not None and current_id > max_video_id:
-                    logger.info(f"Reached max_video_id limit: {max_video_id}")
+                # Check if we've hit the consecutive failures limit
+                if consecutive_failures >= max_failures:
+                    logger.info(
+                        f"No videos found after {consecutive_failures} consecutive attempts. Stopping."
+                    )
                     break
 
-                # Check if we should enter probe mode
-                if consecutive_failures >= max_failures:
-                    if probe_attempts >= max_probe_attempts:
-                        logger.info(
-                            f"No videos found after {probe_attempts} probe attempts. Stopping."
-                        )
-                        break
-
-                    # Enter probe mode: jump ahead and check for any valid IDs
-                    probe_id = current_id + probe_step
-                    logger.info(
-                        f"Gap detected. Probing ahead at ID {probe_id} (attempt {probe_attempts + 1}/{max_probe_attempts})..."
-                    )
-
-                    # Probe a small batch
-                    probe_batch_size = min(max_concurrent, 5)
-                    probe_tasks = [
-                        fetch_with_semaphore(probe_id + i) for i in range(probe_batch_size)
-                    ]
-                    probe_results = await asyncio.gather(*probe_tasks, return_exceptions=True)
-
-                    # Check if we found anything in the probe
-                    found_in_probe = False
-                    for probe_result in probe_results:
-                        if isinstance(probe_result, dict):
-                            found_in_probe = True
-                            break
-
-                    if found_in_probe:
-                        logger.info(f"Found video at ID ~{probe_id}! Resuming from there.")
-                        current_id = probe_id
-                        consecutive_failures = 0
-                        probe_attempts = 0
-                        # Process the probe results
-                        for i, result in enumerate(probe_results):
-                            if isinstance(result, (Exception, BaseException)):
-                                self.stats["videos"]["failed"] += 1
-                            elif result is None:
-                                self.stats["videos"]["empty"] += 1
-                            elif isinstance(result, dict):
-                                self._append_to_jsonl(output_file, result, self.video_lock)
-                                self.stats["videos"]["success"] += 1
-                            self.video_pbar.update(1)
-                            self.video_pbar.set_postfix(
-                                success=self.stats["videos"]["success"],
-                                empty=self.stats["videos"]["empty"],
-                                failed=self.stats["videos"]["failed"],
-                            )
-                        current_id += probe_batch_size
-                        await asyncio.sleep(self.config.get("request_delay", 0.1))
-                        continue
-                    else:
-                        # Nothing found in probe, try next probe step
-                        current_id = probe_id + probe_batch_size
-                        probe_attempts += 1
-                        # Update stats for probe attempts
-                        self.stats["videos"]["empty"] += probe_batch_size
-                        self.video_pbar.update(probe_batch_size)
-                        self.video_pbar.set_postfix(
-                            success=self.stats["videos"]["success"],
-                            empty=self.stats["videos"]["empty"],
-                            failed=self.stats["videos"]["failed"],
-                        )
-                        await asyncio.sleep(self.config.get("request_delay", 0.1))
-                        continue
-
-                # Normal crawling mode
+                # Determine batch size, respecting max_video_id if set
                 batch_size = max_concurrent
+                if max_video_id is not None:
+                    # Don't go beyond max_video_id
+                    if current_id > max_video_id:
+                        logger.info(f"Reached max_video_id limit: {max_video_id}")
+                        break
+                    # Adjust batch size if we're near the limit
+                    batch_size = min(batch_size, max_video_id - current_id + 1)
+
+                # Fetch batch
                 tasks = [
                     fetch_with_semaphore(current_id + i) for i in range(batch_size)
                 ]
@@ -416,8 +356,7 @@ class CDVLCrawler:
                         # Success!
                         self._append_to_jsonl(output_file, result, self.video_lock)
                         self.stats["videos"]["success"] += 1
-                        consecutive_failures = 0
-                        probe_attempts = 0  # Reset probe attempts on success
+                        consecutive_failures = 0  # Reset on success
                     else:
                         # Unexpected result type
                         self.stats["videos"]["failed"] += 1
@@ -441,20 +380,15 @@ class CDVLCrawler:
                 self.video_pbar.close()
 
     async def _crawl_datasets(self, start_id: int = 1, max_concurrent: int = 5):
-        """Crawl all datasets with parallel requests and gap probing"""
+        """Crawl all datasets with parallel requests and sequential scanning"""
         logger.info("Starting dataset crawler...")
-        output_file = str(
-            self.output_dir / self.config["output"]["datasets_file"]
-        )
+        output_file = str(self.output_dir / self.config["output"]["datasets_file"])
         consecutive_failures = 0
-        max_failures = self.config.get("max_consecutive_failures", 10)
-        probe_step = self.config.get("probe_step", 100)
-        max_probe_attempts = self.config.get("max_probe_attempts", 20)
+        max_failures = self.config.get("max_consecutive_failures", 1000)
         max_dataset_id = self.config.get("max_dataset_id")
 
         current_id = start_id
         semaphore = asyncio.Semaphore(max_concurrent)
-        probe_attempts = 0
 
         # Create progress bar
         self.dataset_pbar = tqdm(
@@ -467,79 +401,24 @@ class CDVLCrawler:
 
         try:
             while True:
-                # Check if we've reached the max ID limit
-                if max_dataset_id is not None and current_id > max_dataset_id:
-                    logger.info(f"Reached max_dataset_id limit: {max_dataset_id}")
+                # Check if we've hit the consecutive failures limit
+                if consecutive_failures >= max_failures:
+                    logger.info(
+                        f"No datasets found after {consecutive_failures} consecutive attempts. Stopping."
+                    )
                     break
 
-                # Check if we should enter probe mode
-                if consecutive_failures >= max_failures:
-                    if probe_attempts >= max_probe_attempts:
-                        logger.info(
-                            f"No datasets found after {probe_attempts} probe attempts. Stopping."
-                        )
-                        break
-
-                    # Enter probe mode: jump ahead and check for any valid IDs
-                    probe_id = current_id + probe_step
-                    logger.info(
-                        f"Gap detected. Probing ahead at dataset ID {probe_id} (attempt {probe_attempts + 1}/{max_probe_attempts})..."
-                    )
-
-                    # Probe a small batch
-                    probe_batch_size = min(max_concurrent, 5)
-                    probe_tasks = [
-                        fetch_with_semaphore(probe_id + i) for i in range(probe_batch_size)
-                    ]
-                    probe_results = await asyncio.gather(*probe_tasks, return_exceptions=True)
-
-                    # Check if we found anything in the probe
-                    found_in_probe = False
-                    for probe_result in probe_results:
-                        if isinstance(probe_result, dict):
-                            found_in_probe = True
-                            break
-
-                    if found_in_probe:
-                        logger.info(f"Found dataset at ID ~{probe_id}! Resuming from there.")
-                        current_id = probe_id
-                        consecutive_failures = 0
-                        probe_attempts = 0
-                        # Process the probe results
-                        for i, result in enumerate(probe_results):
-                            if isinstance(result, (Exception, BaseException)):
-                                self.stats["datasets"]["failed"] += 1
-                            elif result is None:
-                                self.stats["datasets"]["empty"] += 1
-                            elif isinstance(result, dict):
-                                self._append_to_jsonl(output_file, result, self.dataset_lock)
-                                self.stats["datasets"]["success"] += 1
-                            self.dataset_pbar.update(1)
-                            self.dataset_pbar.set_postfix(
-                                success=self.stats["datasets"]["success"],
-                                empty=self.stats["datasets"]["empty"],
-                                failed=self.stats["datasets"]["failed"],
-                            )
-                        current_id += probe_batch_size
-                        await asyncio.sleep(self.config.get("request_delay", 0.1))
-                        continue
-                    else:
-                        # Nothing found in probe, try next probe step
-                        current_id = probe_id + probe_batch_size
-                        probe_attempts += 1
-                        # Update stats for probe attempts
-                        self.stats["datasets"]["empty"] += probe_batch_size
-                        self.dataset_pbar.update(probe_batch_size)
-                        self.dataset_pbar.set_postfix(
-                            success=self.stats["datasets"]["success"],
-                            empty=self.stats["datasets"]["empty"],
-                            failed=self.stats["datasets"]["failed"],
-                        )
-                        await asyncio.sleep(self.config.get("request_delay", 0.1))
-                        continue
-
-                # Normal crawling mode
+                # Determine batch size, respecting max_dataset_id if set
                 batch_size = max_concurrent
+                if max_dataset_id is not None:
+                    # Don't go beyond max_dataset_id
+                    if current_id > max_dataset_id:
+                        logger.info(f"Reached max_dataset_id limit: {max_dataset_id}")
+                        break
+                    # Adjust batch size if we're near the limit
+                    batch_size = min(batch_size, max_dataset_id - current_id + 1)
+
+                # Fetch batch
                 tasks = [
                     fetch_with_semaphore(current_id + i) for i in range(batch_size)
                 ]
@@ -557,8 +436,7 @@ class CDVLCrawler:
                         # Success!
                         self._append_to_jsonl(output_file, result, self.dataset_lock)
                         self.stats["datasets"]["success"] += 1
-                        consecutive_failures = 0
-                        probe_attempts = 0  # Reset probe attempts on success
+                        consecutive_failures = 0  # Reset on success
                     else:
                         # Unexpected result type
                         self.stats["datasets"]["failed"] += 1
@@ -592,9 +470,7 @@ class CDVLCrawler:
                 return
 
             # Create output files if they don't exist
-            videos_file = str(
-                self.output_dir / self.config["output"]["videos_file"]
-            )
+            videos_file = str(self.output_dir / self.config["output"]["videos_file"])
             datasets_file = str(
                 self.output_dir / self.config["output"]["datasets_file"]
             )

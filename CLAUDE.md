@@ -21,9 +21,9 @@ uv run cdvl-crawler crawl
 uv run cdvl-crawler crawl --output-dir ./data
 uv run cdvl-crawler crawl --output-dir ./data --max-concurrent 10 --delay 0.2
 
-# Crawl with custom probe parameters (for sparse ID ranges)
-uv run cdvl-crawler crawl --probe-step 200 --max-probe-attempts 30
+# Crawl with custom limits
 uv run cdvl-crawler crawl --max-video-id 3000 --max-dataset-id 500
+uv run cdvl-crawler crawl --max-failures 2000  # Stop after 2000 consecutive failures
 
 # Accept license automatically (useful for automation)
 uv run cdvl-crawler crawl --accept-license
@@ -78,10 +78,8 @@ Note: No test suite exists yet. Tests should be added using pytest when implemen
 - Crawl command supports CLI options for all parameters:
   - `--start-video-id`, `--start-dataset-id`: Override starting IDs
   - `--max-concurrent`: Control parallelism (default: 5)
-  - `--max-failures`: Control when to stop after consecutive failures (default: 10)
+  - `--max-failures`: Control when to stop after consecutive failures (default: 1000)
   - `--delay`: Control rate limiting between batches (default: 0.1s)
-  - `--probe-step`: How far ahead to jump when probing for ID gaps (default: 100)
-  - `--max-probe-attempts`: Max probe attempts before giving up (default: 20, meaning 2000 ID range)
   - `--max-video-id`: Maximum video ID to crawl to (optional, no limit by default)
   - `--max-dataset-id`: Maximum dataset ID to crawl to (optional, no limit by default)
 - Generate-site command supports:
@@ -97,7 +95,7 @@ Main class for metadata extraction:
 - **Session Management**: Creates aiohttp session, handles CSRF-protected login
 - **Parallel Crawling**: Uses `asyncio.Semaphore` to limit concurrent requests
 - **Auto-Resume**: Reads last ID from JSONL output files to continue where it left off
-- **Gap Probing**: When consecutive failures are detected, jumps ahead to probe for valid IDs in sparse ID spaces
+- **Sequential Scanning**: Crawls IDs sequentially until 1000 consecutive failures (configurable)
 - **Progress Tracking**: Uses `tqdm` with separate progress bars for videos and datasets
 - **Content Parsing**: Uses BeautifulSoup with lxml parser to extract structured data from HTML
 - **Output**: Appends to JSONL files with thread-safe locks in configurable output directory
@@ -110,7 +108,7 @@ Constructor: `CDVLCrawler(config_path=None, output_dir=".", overrides=None)`
 Key methods:
 - `_fetch_video()` / `_fetch_dataset()`: Fetch single item by ID
 - `_parse_content()`: Extract structured data from HTML (titles, paragraphs, links, media, tables)
-- `_crawl_videos()` / `_crawl_datasets()`: Main crawling loops with batch processing and gap probing
+- `_crawl_videos()` / `_crawl_datasets()`: Main crawling loops with batch processing and sequential scanning
 - `_get_last_id_from_jsonl()`: Resume functionality
 
 **2. CDVLDownloader (`downloader.py`)**
@@ -239,7 +237,7 @@ Configuration is **optional** with multiple layers of defaults and overrides:
 - Endpoint URLs (`endpoints.video_base_url`, `endpoints.dataset_base_url`)
 - Headers (`headers.User-Agent`, etc.)
 - Crawling parameters (`max_concurrent_requests`, `max_consecutive_failures`, `request_delay`)
-- Gap probing parameters (`probe_step`, `max_probe_attempts`, `max_video_id`, `max_dataset_id`)
+- ID limits (`max_video_id`, `max_dataset_id`)
 - Output filenames (`output.videos_file`, `output.datasets_file`)
 
 The `config.example.json` file serves as a template.
@@ -253,8 +251,8 @@ The `config.example.json` file serves as a template.
 - **BeautifulSoup typing**: Some methods return `str | list` for attributes, code includes type guards
 - **Error handling**: Distinguishes between "empty" (valid response, no content), "failed" (HTTP error), and exceptions
 - **Rate limiting**: Uses `asyncio.sleep()` between batches to avoid server strain
-- **Consecutive failures**: After N consecutive empty/failed responses (configurable), enters probe mode
-- **Gap probing**: Jumps ahead by configurable steps to find valid IDs in sparse ID spaces; handles gaps up to 2000 IDs by default
+- **Consecutive failures**: After 1000 consecutive empty/failed responses (configurable), stops crawling
+- **Sequential scanning**: Crawls every ID sequentially, handling gaps naturally (largest observed gap: 532 IDs)
 
 ## Package Structure
 
