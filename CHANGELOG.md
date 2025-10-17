@@ -1,3 +1,9 @@
+## [0.4.1] - 2025-10-17
+
+### ⚙️ Miscellaneous Tasks
+
+- Add python 3.14 support, remove old license classifier
+- Bump version to 0.4.1
 ## [0.4.0] - 2025-10-13
 
 ### 🐛 Bug Fixes
