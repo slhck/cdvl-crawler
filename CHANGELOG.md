@@ -1,3 +1,12 @@
+## [0.5.0] - 2025-12-01
+
+### 🚀 Features
+
+- Add export command
+
+### ⚙️ Miscellaneous Tasks
+
+- Bump version to 0.5.0
 ## [0.4.1] - 2025-10-17
 
 ### ⚙️ Miscellaneous Tasks
