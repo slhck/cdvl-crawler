@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CDVL Crawler is a Python CLI tool for crawling and downloading videos from the CDVL (Consumer Digital Video Library) research repository. The tool provides three main operations:
+CDVL Crawler is a Python CLI tool for crawling and downloading videos from the CDVL (Consumer Digital Video Library) research repository. The tool provides four main operations:
 
 1. **Crawling**: Systematically extracts metadata from all videos and datasets on cdvl.org
 2. **Downloading**: Downloads individual videos by ID
 3. **Site Generation**: Creates a searchable, interactive HTML site from crawled metadata
+4. **Export**: Converts JSONL metadata to CSV format for use in spreadsheets
 
 ## Development Commands
 
@@ -36,6 +37,10 @@ uv run cdvl-crawler download 42 --output-dir ./downloads
 # Generate static site
 uv run cdvl-crawler generate-site
 uv run cdvl-crawler generate-site -i ./data/videos.jsonl -o ./website/index.html
+
+# Export to CSV
+uv run cdvl-crawler export -i videos.jsonl -o videos.csv
+uv run cdvl-crawler export -i videos.jsonl -o videos.csv --columns id,title,filename
 
 # Install dependencies
 uv sync
@@ -65,7 +70,7 @@ Note: No test suite exists yet. Tests should be added using pytest when implemen
 
 ### Entry Point and CLI (`__main__.py`)
 
-- Uses `argparse` with subcommands (`crawl`, `download`, `generate-site`)
+- Uses `argparse` with subcommands (`crawl`, `download`, `generate-site`, `export`)
 - Async commands use `asyncio.run()` to execute async functions; sync commands run directly
 - Handles CLI argument parsing and validation before delegating to main classes
 - Supports `--output-dir` option to specify where files are saved (default: current directory)
@@ -85,6 +90,10 @@ Note: No test suite exists yet. Tests should be added using pytest when implemen
 - Generate-site command supports:
   - `-i, --input`: Input JSONL file (default: videos.jsonl)
   - `-o, --output`: Output HTML file (default: index.html)
+- Export command supports:
+  - `-i, --input`: Input JSONL file (default: videos.jsonl)
+  - `-o, --output`: Output CSV file (default: videos.csv)
+  - `--columns`: Comma-separated list of columns to export (default: all columns)
 - CLI options override config file values, which override built-in defaults
 
 ### Core Components
@@ -158,7 +167,26 @@ Key methods:
 - `escape_json()`: Safely escape JSON for HTML embedding
 - `generate()`: Main entry point - load data, generate HTML, write output
 
-**5. Type Definitions (`types.py`)**
+**5. CDVLExporter (`exporter.py`)**
+
+CSV exporter for JSONL data:
+- **JSONL Parsing**: Loads and parses records from JSONL files
+- **Column Selection**: Export all columns or specific subset
+- **Value Flattening**: Converts nested structures (lists, dicts) to CSV-compatible strings
+- **Proper CSV Format**: Uses Python's csv module with proper quoting for special characters
+- **Synchronous**: Pure Python without async (no network I/O needed)
+
+Constructor: `CDVLExporter(input_file="videos.jsonl", output_file="videos.csv", columns=None)`
+- `input_file`: Path to input JSONL file
+- `output_file`: Path to output CSV file
+- `columns`: List of column names to export (None for all columns)
+
+Key methods:
+- `export()`: Main entry point - load data, convert to CSV, write output
+- `_flatten_value()`: Convert any JSON value to CSV-compatible string
+- `_get_all_columns()`: Determine column order from records
+
+**6. Type Definitions (`types.py`)**
 
 TypedDict definitions for structured data:
 - `VideoData` / `DatasetData`: Complete records with id, url, and parsed content
@@ -192,6 +220,11 @@ Submit form → Parse download table → Stream file with progress
 ```
 JSONL file → CDVLSiteGenerator → Parse videos → Generate HTML with JavaScript →
 Write self-contained HTML file
+```
+
+**Export:**
+```
+JSONL file → CDVLExporter → Parse records → Flatten values → Write CSV file
 ```
 
 ### Output Format
@@ -258,10 +291,11 @@ The `config.example.json` file serves as a template.
 
 ```
 src/cdvl_crawler/
-├── __init__.py        # Package exports (CDVLCrawler, CDVLDownloader, CDVLSiteGenerator)
-├── __main__.py        # CLI entry point (crawl, download, generate-site subcommands)
+├── __init__.py        # Package exports (CDVLCrawler, CDVLDownloader, CDVLExporter, CDVLSiteGenerator)
+├── __main__.py        # CLI entry point (crawl, download, generate-site, export subcommands)
 ├── crawler.py         # CDVLCrawler class
 ├── downloader.py      # CDVLDownloader class
+├── exporter.py        # CDVLExporter class
 ├── generator.py       # CDVLSiteGenerator class
 ├── types.py           # TypedDict definitions
 ├── utils.py           # Shared utilities

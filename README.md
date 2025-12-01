@@ -14,6 +14,7 @@ Python tools for crawling and downloading videos from the [CDVL](https://cdvl.or
   - [Crawling Metadata](#crawling-metadata)
   - [Downloading Videos](#downloading-videos)
   - [Generating Static Site](#generating-static-site)
+  - [Exporting to CSV](#exporting-to-csv)
 - [Output Format](#output-format)
   - [Video Records](#video-records)
   - [Dataset Records](#dataset-records)
@@ -51,6 +52,7 @@ This package provides a unified command-line tool for working with CDVL:
 - **`crawl`** - Crawls and extracts metadata from all videos and datasets on CDVL
 - **`download`** - Downloads individual videos by their ID
 - **`generate-site`** - Generates a searchable, interactive HTML site from crawled metadata
+- **`export`** - Exports JSONL data to CSV format for use in spreadsheets
 
 Features:
 
@@ -77,6 +79,7 @@ uvx cdvl-crawler --help
 uvx cdvl-crawler crawl --help
 uvx cdvl-crawler download --help
 uvx cdvl-crawler generate-site --help
+uvx cdvl-crawler export --help
 ```
 
 Or install with `pipx`:
@@ -228,6 +231,29 @@ For more options:
 uvx cdvl-crawler generate-site --help
 ```
 
+### Exporting to CSV
+
+After crawling metadata, you can export it to CSV format for use in spreadsheets or data analysis tools:
+
+```bash
+# Export all columns (default)
+uvx cdvl-crawler export -i videos.jsonl -o videos.csv
+
+# Export specific columns
+uvx cdvl-crawler export -i videos.jsonl -o videos.csv --columns id,title,filename
+
+# Export datasets
+uvx cdvl-crawler export -i datasets.jsonl -o datasets.csv --columns id,title,url
+```
+
+Available columns depend on the data, but typically include: `id`, `url`, `title`, `content_type`, `filename`, `file_size`, `paragraphs`, `links`, `media`, `tables_count`, `extracted_at`.
+
+For more options:
+
+```bash
+uvx cdvl-crawler export --help
+```
+
 ## Output Format
 
 Output files use JSON Lines format (one JSON object per line).
@@ -325,7 +351,7 @@ Filter by keyword in paragraphs:
 jq 'select(.paragraphs | join(" ") | contains("codec"))' videos.jsonl
 ```
 
-Convert to CSV:
+Convert to CSV (or use `cdvl-crawler export`):
 
 ```bash
 jq -r '[.id, .title, .url] | @csv' videos.jsonl > videos.csv
@@ -400,7 +426,7 @@ You can also use the package programmatically:
 
 ```python
 import asyncio
-from cdvl_crawler import CDVLCrawler, CDVLDownloader, CDVLSiteGenerator
+from cdvl_crawler import CDVLCrawler, CDVLDownloader, CDVLExporter, CDVLSiteGenerator
 
 # Crawl videos and datasets
 async def crawl():
@@ -430,10 +456,21 @@ def generate_site():
     success = generator.generate()
     print(f"Site generated: {success}")
 
+# Export to CSV
+def export_to_csv():
+    exporter = CDVLExporter(
+        input_file="./data/videos.jsonl",
+        output_file="./data/videos.csv",
+        columns=["id", "title", "filename"]  # None for all columns
+    )
+    success = exporter.export()
+    print(f"Exported: {success}")
+
 # Run
 asyncio.run(crawl())
 asyncio.run(download())
 generate_site()
+export_to_csv()
 ```
 
 ## License

@@ -11,6 +11,7 @@ import sys
 
 from cdvl_crawler.crawler import CDVLCrawler
 from cdvl_crawler.downloader import CDVLDownloader
+from cdvl_crawler.exporter import CDVLExporter
 from cdvl_crawler.generator import CDVLSiteGenerator
 from cdvl_crawler.utils import require_license_acceptance
 
@@ -175,6 +176,44 @@ Examples:
         help="Output HTML file (default: index.html)",
     )
 
+    # Export command
+    export_parser = subparsers.add_parser(
+        "export",
+        help="Export JSONL data to CSV format",
+        description="Convert JSONL metadata files to CSV format for use in spreadsheets",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Export all columns (default)
+  cdvl-crawler export -i videos.jsonl -o videos.csv
+
+  # Export specific columns
+  cdvl-crawler export -i videos.jsonl -o videos.csv --columns id,title,filename
+
+  # Export datasets
+  cdvl-crawler export -i datasets.jsonl -o datasets.csv --columns id,title,url
+        """,
+    )
+    export_parser.add_argument(
+        "-i",
+        "--input",
+        type=str,
+        default="videos.jsonl",
+        help="Input JSONL file (default: videos.jsonl)",
+    )
+    export_parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default="videos.csv",
+        help="Output CSV file (default: videos.csv)",
+    )
+    export_parser.add_argument(
+        "--columns",
+        type=str,
+        help="Comma-separated list of columns to export (default: all columns)",
+    )
+
     args = parser.parse_args()
 
     # If no config specified, check if config.json exists in current directory
@@ -189,6 +228,8 @@ Examples:
         asyncio.run(run_downloader(args))
     elif args.command == "generate-site":
         run_generator(args)
+    elif args.command == "export":
+        run_exporter(args)
 
 
 async def run_crawler(args):
@@ -300,6 +341,25 @@ def run_generator(args):
         sys.exit(0)
     else:
         logger.error("Failed to generate static site")
+        sys.exit(1)
+
+
+def run_exporter(args):
+    """Run the CSV exporter"""
+    # Parse columns if provided
+    columns = None
+    if args.columns:
+        columns = [col.strip() for col in args.columns.split(",")]
+
+    exporter = CDVLExporter(
+        input_file=args.input, output_file=args.output, columns=columns
+    )
+
+    if exporter.export():
+        print(f"\n✓ Export successful: {args.output}")
+        sys.exit(0)
+    else:
+        logger.error("Failed to export data")
         sys.exit(1)
 
 
