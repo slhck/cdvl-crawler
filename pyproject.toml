@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "cdvl_crawler"
-version = "0.5.0"
+version = "0.6.0"
 description = "Crawl and download videos from the CDVL (Consumer Digital Video Library) research repository"
 readme = "README.md"
 authors = [

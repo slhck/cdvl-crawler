@@ -1,3 +1,12 @@
+## [0.6.0] - 2025-12-02
+
+### 🚀 Features
+
+- Add resume option
+
+### ⚙️ Miscellaneous Tasks
+
+- Bump version to 0.6.0
 ## [0.5.0] - 2025-12-01
 
 ### 🚀 Features
