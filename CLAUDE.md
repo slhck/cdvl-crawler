@@ -33,6 +33,7 @@ uv run cdvl-crawler download 42 --accept-license
 # Download videos
 uv run cdvl-crawler download 42
 uv run cdvl-crawler download 42 --output-dir ./downloads
+uv run cdvl-crawler download 42 --no-resume  # Disable resume capability
 
 # Generate static site
 uv run cdvl-crawler generate-site
@@ -127,6 +128,8 @@ Main class for video downloads:
 - **URL Extraction**: Parses download table from response HTML
 - **File Download**: Streams files with progress bars, handles Content-Disposition headers, saves to configurable output directory
 - **Session Reuse**: Login once, download multiple videos in sequence
+- **Resume Support**: Supports HTTP range requests for resuming interrupted downloads
+- **File Verification**: Verifies downloaded file size matches Content-Length header
 
 Constructor: `CDVLDownloader(config_path=None, output_dir=".")`
 - `config_path`: Optional path to config file
@@ -134,7 +137,16 @@ Constructor: `CDVLDownloader(config_path=None, output_dir=".")`
 
 Key methods:
 - `get_download_link()`: Scrape video page, submit form, extract download URL
-- `download_file()`: Stream download with progress bar, auto-detect filename, save to output_dir
+- `download_file(url, output_path, video_id, enable_resume)`: Stream download with resume support, progress bar, auto-detect filename, file size verification
+- `_probe_range_support()`: Check if server supports HTTP range requests
+- `_validate_partial_file()`: Validate partial download for resume
+
+Resume mechanism:
+- Downloads to `.partial` file with companion `.partial.meta` JSON file
+- Metadata tracks video_id, content_length, and filename for validation
+- Probes server for `Accept-Ranges: bytes` header before attempting resume
+- Falls back to full download if range request fails or server doesn't support ranges
+- Verifies final file size matches expected Content-Length
 
 **3. Utilities (`utils.py`)**
 

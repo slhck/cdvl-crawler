@@ -154,6 +154,11 @@ Examples:
         action="store_true",
         help="Automatically accept the CDVL license agreement without prompting",
     )
+    download_parser.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="Disable resume capability (always download from beginning)",
+    )
 
     # Generate site command
     site_parser = subparsers.add_parser(
@@ -319,7 +324,10 @@ async def run_downloader(args):
             else:
                 # Download the file
                 success = await downloader.download_file(
-                    download_url, args.output if len(video_ids) == 1 else None
+                    download_url,
+                    output_path=args.output if len(video_ids) == 1 else None,
+                    video_id=video_id,
+                    enable_resume=not args.no_resume,
                 )
                 if success:
                     success_count += 1

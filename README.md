@@ -205,7 +205,12 @@ uvx cdvl-crawler download 42 --dry-run
 
 # Download to specific filename (single video only)
 uvx cdvl-crawler download 42 --output my_video.avi
+
+# Disable resume capability (always download from beginning)
+uvx cdvl-crawler download 42 --no-resume
 ```
+
+Downloads include automatic file size verification and support for resuming interrupted downloads (if the server supports HTTP range requests).
 
 For more options:
 
