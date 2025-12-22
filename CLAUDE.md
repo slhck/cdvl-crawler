@@ -65,7 +65,9 @@ uv run ruff format src/
 ```
 
 **Testing:**
-Note: No test suite exists yet. Tests should be added using pytest when implemented.
+```bash
+uv run pytest tests/ -v
+```
 
 ## Code Architecture
 

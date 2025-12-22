@@ -21,6 +21,7 @@ Python tools for crawling and downloading videos from the [CDVL](https://cdvl.or
 - [Configuration File (`config.json`)](#configuration-file-configjson)
   - [Configuration Options](#configuration-options)
 - [API](#api)
+- [Development](#development)
 - [License](#license)
 
 ## Disclaimer
@@ -476,6 +477,51 @@ asyncio.run(crawl())
 asyncio.run(download())
 generate_site()
 export_to_csv()
+```
+
+## Development
+
+To set up a development environment:
+
+```bash
+# Clone the repository
+git clone https://github.com/slhck/cdvl-crawler.git
+cd cdvl-crawler
+
+# Install dependencies (including dev dependencies)
+uv sync --dev
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+uv run pytest tests/ -v
+
+# Run specific test file
+uv run pytest tests/test_utils.py -v
+
+# Run with coverage (if pytest-cov is installed)
+uv run pytest tests/ --cov=cdvl_crawler
+```
+
+### Linting and Formatting
+
+```bash
+# Check code style
+uv run ruff check src/ tests/
+
+# Auto-fix issues
+uv run ruff check --fix src/ tests/
+
+# Format code
+uv run ruff format src/ tests/
+```
+
+### Type Checking
+
+```bash
+uv run mypy src/
 ```
 
 ## License
