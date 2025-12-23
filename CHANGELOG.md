@@ -1,3 +1,18 @@
+## [0.7.0] - 2025-12-23
+
+### 🚀 Features
+
+- More fancy UI
+
+### ⚙️ Miscellaneous Tasks
+
+- Update support to python 3.15
+- Add test suite
+- Bump version to 0.7.0
+
+### ◀️ Revert
+
+- Use Python 3.14 instead of 3.15
 ## [0.6.0] - 2025-12-02
 
 ### 🚀 Features
