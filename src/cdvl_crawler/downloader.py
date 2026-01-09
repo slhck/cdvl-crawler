@@ -62,6 +62,9 @@ class CDVLDownloader:
     async def _probe_range_support(self, url: str) -> tuple[bool, Optional[int]]:
         """Check if server supports HTTP range requests.
 
+        Uses a GET request with Range header instead of HEAD, since some servers
+        (like CDVL) don't support HEAD requests for download URLs.
+
         Returns:
             Tuple of (supports_ranges, content_length)
         """
@@ -69,26 +72,49 @@ class CDVLDownloader:
             return False, None
 
         try:
-            async with self.session.head(url) as response:
-                if response.status != 200:
-                    logger.debug(f"HEAD request failed: HTTP {response.status}")
+            # Use GET with Range: bytes=0-0 to probe for range support
+            # This requests just the first byte, which is efficient
+            headers = {"Range": "bytes=0-0"}
+            async with self.session.get(url, headers=headers) as response:
+                if response.status == 206:
+                    # Server supports range requests
+                    # Content-Range header format: "bytes 0-0/total_size"
+                    content_range = response.headers.get("Content-Range", "")
+                    content_length: Optional[int] = None
+                    if "/" in content_range:
+                        try:
+                            total_str = content_range.split("/")[-1]
+                            if total_str != "*":
+                                content_length = int(total_str)
+                        except ValueError:
+                            pass
+
+                    logger.debug(
+                        f"Range support: True (206), Content-Length: {content_length}"
+                    )
+                    # Consume the response body to allow connection reuse
+                    await response.read()
+                    return True, content_length
+
+                elif response.status == 200:
+                    # Server ignored the Range header, doesn't support ranges
+                    content_length_str = response.headers.get("Content-Length")
+                    content_length = (
+                        int(content_length_str) if content_length_str else None
+                    )
+                    logger.debug(
+                        f"Range support: False (200), Content-Length: {content_length}"
+                    )
+                    # Important: we need to NOT consume the full body here
+                    # Just close/cancel the response
+                    return False, content_length
+
+                else:
+                    logger.debug(f"Range probe failed: HTTP {response.status}")
                     return False, None
 
-                accept_ranges = response.headers.get("Accept-Ranges", "").lower()
-                supports_ranges = accept_ranges == "bytes"
-
-                content_length: Optional[int] = None
-                content_length_str = response.headers.get("Content-Length")
-                if content_length_str:
-                    content_length = int(content_length_str)
-
-                logger.debug(
-                    f"Range support: {supports_ranges}, Content-Length: {content_length}"
-                )
-                return supports_ranges, content_length
-
         except Exception as e:
-            logger.debug(f"HEAD request error: {e}")
+            logger.debug(f"Range probe error: {e}")
             return False, None
 
     def _save_partial_metadata(
@@ -321,7 +347,7 @@ class CDVLDownloader:
             if supports_ranges:
                 logger.info("Server supports range requests")
             else:
-                logger.debug("Server does not support range requests")
+                logger.info("Server does not support range requests")
 
         try:
             # For resume support, we need to check partial files based on video_id
