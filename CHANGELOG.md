@@ -1,3 +1,12 @@
+## [0.7.1] - 2026-01-09
+
+### 🐛 Bug Fixes
+
+- Probe for range request instead of HEAD
+
+### ⚙️ Miscellaneous Tasks
+
+- Bump version to 0.7.1
 ## [0.7.0] - 2025-12-23
 
 ### 🚀 Features
