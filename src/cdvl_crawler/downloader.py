@@ -387,7 +387,16 @@ class CDVLDownloader:
             if resume_from > 0:
                 headers["Range"] = f"bytes={resume_from}-"
 
-            async with self.session.get(url, headers=headers) as response:
+            # Use longer timeout for downloads - no total timeout, but with read timeout
+            # to detect stalled connections (300s = 5 min inactivity before timeout)
+            download_timeout = aiohttp.ClientTimeout(
+                total=None,  # No total timeout - downloads can take hours
+                sock_read=300,  # 5 min read timeout to detect stalled connections
+            )
+
+            async with self.session.get(
+                url, headers=headers, timeout=download_timeout
+            ) as response:
                 # Check response status
                 if resume_from > 0:
                     if response.status == 206:
@@ -540,6 +549,8 @@ class CDVLDownloader:
             return True
 
         except Exception as e:
-            logger.error(f"Download error: {e}")
+            # Include exception type in log for better debugging
+            # (asyncio.TimeoutError has no message, so type is essential)
+            logger.error(f"Download error ({type(e).__name__}): {e}")
             # Keep partial file and metadata for potential resume
             return False
