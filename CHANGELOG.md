@@ -1,3 +1,12 @@
+## [0.7.2] - 2026-01-10
+
+### 🐛 Bug Fixes
+
+- Better handling for stalled connections
+
+### ⚙️ Miscellaneous Tasks
+
+- Bump version to 0.7.2
 ## [0.7.1] - 2026-01-09
 
 ### 🐛 Bug Fixes
