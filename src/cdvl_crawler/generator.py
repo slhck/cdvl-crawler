@@ -6,6 +6,7 @@ import json
 import logging
 import os
 from pathlib import Path
+from typing import Any
 
 from cdvl_crawler.types import VideoData
 
@@ -55,7 +56,7 @@ class CDVLSiteGenerator:
             return text
         return text[:max_length].rsplit(" ", 1)[0] + "..."
 
-    def escape_json(self, data: list[VideoData]) -> str:
+    def escape_json(self, data: list[Any]) -> str:
         """Escape JSON for embedding in HTML"""
         return json.dumps(data).replace("<", "\\u003c").replace(">", "\\u003e")
 

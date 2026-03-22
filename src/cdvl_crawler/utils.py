@@ -335,7 +335,7 @@ async def login_to_cdvl(
         return False
 
 
-def parse_content_disposition(content_disp: str) -> Optional[str]:
+def parse_content_disposition(content_disp: Optional[str]) -> Optional[str]:
     """
     Parse filename from Content-Disposition header
 

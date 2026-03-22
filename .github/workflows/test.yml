@@ -69,5 +69,5 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
-      - name: Run mypy
-        run: uv run mypy src/
+      - name: Type check with ty
+        run: uv run ty check

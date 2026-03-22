@@ -52,7 +52,7 @@ uv lock
 
 **Type checking:**
 ```bash
-uv run mypy src/
+uv run ty check
 ```
 
 **Linting and formatting:**

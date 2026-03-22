@@ -52,7 +52,7 @@ class CDVLExporter:
         elif isinstance(value, list):
             # For lists, join with semicolons or serialize as JSON
             if all(isinstance(item, str) for item in value):
-                return "; ".join(value)
+                return "; ".join(str(item) for item in value)
             else:
                 return json.dumps(value, ensure_ascii=False)
         elif isinstance(value, dict):
