@@ -194,7 +194,7 @@ wheels = [
 
 [[package]]
 name = "cdvl-crawler"
-version = "0.7.2"
+version = "0.7.3"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },

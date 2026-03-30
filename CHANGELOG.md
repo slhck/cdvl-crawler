@@ -1,3 +1,10 @@
+## [0.7.3] - 2026-03-30
+
+### ⚙️ Miscellaneous Tasks
+
+- Replace mypy with ty for type checking
+- *(build)* Relax uv_build upper bound to <1.0.0
+- Bump version to 0.7.3
 ## [0.7.2] - 2026-01-10
 
 ### 🐛 Bug Fixes
