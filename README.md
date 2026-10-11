@@ -521,7 +521,7 @@ uv run ruff format src/ tests/
 ### Type Checking
 
 ```bash
-uv run mypy src/
+uv run ty check
 ```
 
 ## License
