@@ -11,7 +11,7 @@ authors = [
     { name = "Werner Robitza", email = "werner.robitza@gmail.com" }
 ]
 license = "MIT"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 keywords = ["cdvl", "video", "crawler", "downloader", "research"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -21,12 +21,12 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
     "Natural Language :: English",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
 ]
 dependencies = [
     "aiohttp>=3.9.0",
