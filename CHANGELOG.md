@@ -1,3 +1,17 @@
+## [0.7.4] - 2026-10-11
+
+### 🐛 Bug Fixes
+
+- *(deps)* Update dependencies with known vulnerabilities
+
+### 📚 Documentation
+
+- *(readme)* Use ty for type checking
+
+### ⚙️ Miscellaneous Tasks
+
+- Require Python 3.10 and support Python 3.15
+- Bump version to 0.7.4
 ## [0.7.3] - 2026-03-30
 
 ### ⚙️ Miscellaneous Tasks
