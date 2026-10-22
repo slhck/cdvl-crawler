@@ -1,3 +1,18 @@
+## [0.8.0] - 2026-10-22
+
+### 🚀 Features
+
+- *(cli)* Add interactive mode and rich terminal UI
+
+### ⚡ Performance
+
+- *(site)* Render video table incrementally
+
+### ⚙️ Miscellaneous Tasks
+
+- Update pre-commit config
+- Ignore partial download files
+- Bump version to 0.8.0
 ## [0.7.4] - 2026-10-11
 
 ### 🐛 Bug Fixes
