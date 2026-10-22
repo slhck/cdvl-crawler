@@ -35,6 +35,7 @@ class TestCDVLSiteGenerator:
         assert "<title>CDVL // VIDEO ARCHIVE</title>" in html
         assert "const videos =" in html
         assert "1</span> videos loaded" in html  # Video count
+        assert 'id="loadMoreSentinel"' in html  # Incremental row loading
 
     def test_generate_end_to_end(self, sample_videos_jsonl, temp_dir):
         """Full generation pipeline"""

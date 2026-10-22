@@ -181,6 +181,7 @@ Static site generator for video metadata:
 - **JSONL Parsing**: Loads and parses videos from JSONL files
 - **HTML Generation**: Creates self-contained HTML with embedded JavaScript and Tailwind CSS
 - **Interactive Features**: Search, sort, modal details, bulk selection
+- **Rendering**: Shows 100 rows at a time and adds more on scroll (`IntersectionObserver` on `#loadMoreSentinel`); table rows are built once per video and cached, and description excerpts and search text are precomputed
 - **No Dependencies**: Single HTML file with Tailwind CSS via CDN
 - **Synchronous**: Pure Python without async (no network I/O needed)
 

@@ -870,6 +870,7 @@ class CDVLSiteGenerator:
                     <!-- Populated by JavaScript -->
                 </tbody>
             </table>
+            <div id="loadMoreSentinel"></div>
         </div>
     </div>
 
@@ -929,11 +930,22 @@ class CDVLSiteGenerator:
     <script>
         // Video data
         const videos = {video_data_json};
-        // Pre-compute search index for faster filtering
-        const searchIndex = new Map(videos.map(video => [
-            video.id,
-            [video.id.toString(), video.title || '', video.filename || '', (video.paragraphs || []).join(' ')].join(' ').toLowerCase()
-        ]));
+        const videoById = new Map(videos.map(video => [video.id, video]));
+        // Pre-compute search text and description excerpt per video
+        const searchIndex = new Map();
+        const excerpts = new Map();
+        videos.forEach(video => {{
+            searchIndex.set(video.id, [video.id.toString(), video.title || '', video.filename || '', (video.paragraphs || []).join(' ')].join(' ').toLowerCase());
+            const description = getCleanParagraphs(video).join(' ');
+            excerpts.set(video.id, description.length > 120
+                ? description.substring(0, 120).split(' ').slice(0, -1).join(' ') + '...'
+                : description);
+        }});
+        // Number of rows added to the table at once; more are added on scroll
+        const PAGE_SIZE = 100;
+        // Table rows, built once per video and reused across renders
+        const rowCache = new Map();
+        let renderedCount = 0;
         let filteredVideos = [...videos];
         let sortState = {{ column: 'id', ascending: true }};
         let selectedVideoIds = new Set();
@@ -948,6 +960,11 @@ class CDVLSiteGenerator:
 
             // Keyboard shortcuts
             document.addEventListener('keydown', handleKeyboard);
+
+            // Add more rows when the end of the table comes into view
+            new IntersectionObserver(entries => {{
+                if (entries[0].isIntersecting) appendRows();
+            }}, {{ rootMargin: '800px' }}).observe(document.getElementById('loadMoreSentinel'));
         }});
 
         window.addEventListener('hashchange', checkHashAndOpenModal);
@@ -971,8 +988,7 @@ class CDVLSiteGenerator:
             if (hash && hash.startsWith('#')) {{
                 const videoId = parseInt(hash.substring(1));
                 if (!isNaN(videoId)) {{
-                    const video = videos.find(v => v.id === videoId);
-                    if (video) openModal(videoId);
+                    if (videoById.has(videoId)) openModal(videoId);
                 }}
             }}
         }}
@@ -990,10 +1006,9 @@ class CDVLSiteGenerator:
             return url.startsWith('/') ? baseUrl + url : baseUrl + '/' + url;
         }}
 
+        const HTML_ESCAPES = {{ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }};
         function escapeHtml(text) {{
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+            return String(text).replace(/[&<>"']/g, c => HTML_ESCAPES[c]);
         }}
 
         // Search with debounce
@@ -1008,15 +1023,17 @@ class CDVLSiteGenerator:
                 }} else {{
                     filteredVideos = videos.filter(video => searchIndex.get(video.id).includes(query));
                 }}
+                sortVideos();
                 renderTable();
                 updateUI();
                 document.getElementById('searchSpinner').classList.remove('active');
-            }}, 150);
+            }}, 100);
         }});
 
-        // Render table
+        // Render table: show the first page of rows, the rest is added on scroll
         function renderTable() {{
             const tbody = document.getElementById('videoTableBody');
+            renderedCount = 0;
 
             if (filteredVideos.length === 0) {{
                 tbody.innerHTML = `
@@ -1032,47 +1049,64 @@ class CDVLSiteGenerator:
                 return;
             }}
 
-            tbody.innerHTML = filteredVideos.map(video => {{
-                const description = getCleanParagraphs(video).join(' ');
-                const excerpt = description.length > 120
-                    ? description.substring(0, 120).split(' ').slice(0, -1).join(' ') + '...'
-                    : description;
-                const isSelected = selectedVideoIds.has(video.id);
+            tbody.replaceChildren();
+            appendRows();
+        }}
 
-                return `
-                    <tr id="video-${{video.id}}" class="${{isSelected ? 'selected' : ''}}">
-                        <td class="checkbox-cell">
-                            <label class="custom-checkbox">
-                                <input
-                                    type="checkbox"
-                                    ${{isSelected ? 'checked' : ''}}
-                                    onchange="toggleVideoSelection(${{video.id}}, this.checked)"
-                                >
-                                <span class="checkmark"></span>
-                            </label>
-                        </td>
-                        <td class="id-cell">
-                            <a href="#" class="id-link" onclick="openModal(${{video.id}}); return false;">
-                                #${{video.id}}
-                            </a>
-                        </td>
-                        <td class="title-cell">
-                            <a href="#" class="title-link" onclick="openModal(${{video.id}}); return false;">
-                                ${{escapeHtml(video.title || 'Untitled')}}
-                            </a>
-                        </td>
-                        <td class="filename-cell" title="${{escapeHtml(video.filename || '')}}">
-                            ${{escapeHtml(video.filename || '—')}}
-                        </td>
-                        <td class="size-cell">
-                            ${{escapeHtml(video.file_size || '—')}}
-                        </td>
-                        <td class="desc-cell">
-                            ${{escapeHtml(excerpt || 'No description')}}
-                        </td>
-                    </tr>
-                `;
-            }}).join('');
+        function appendRows() {{
+            if (renderedCount >= filteredVideos.length) return;
+            const fragment = document.createDocumentFragment();
+            filteredVideos.slice(renderedCount, renderedCount + PAGE_SIZE).forEach(video => {{
+                const row = getRow(video);
+                const isSelected = selectedVideoIds.has(video.id);
+                row.classList.toggle('selected', isSelected);
+                row.querySelector('input').checked = isSelected;
+                fragment.appendChild(row);
+            }});
+            renderedCount += PAGE_SIZE;
+            document.getElementById('videoTableBody').appendChild(fragment);
+        }}
+
+        function getRow(video) {{
+            let row = rowCache.get(video.id);
+            if (row) return row;
+
+            const template = document.createElement('template');
+            template.innerHTML = `
+                <tr id="video-${{video.id}}">
+                    <td class="checkbox-cell">
+                        <label class="custom-checkbox">
+                            <input
+                                type="checkbox"
+                                onchange="toggleVideoSelection(${{video.id}}, this.checked)"
+                            >
+                            <span class="checkmark"></span>
+                        </label>
+                    </td>
+                    <td class="id-cell">
+                        <a href="#" class="id-link" onclick="openModal(${{video.id}}); return false;">
+                            #${{video.id}}
+                        </a>
+                    </td>
+                    <td class="title-cell">
+                        <a href="#" class="title-link" onclick="openModal(${{video.id}}); return false;">
+                            ${{escapeHtml(video.title || 'Untitled')}}
+                        </a>
+                    </td>
+                    <td class="filename-cell" title="${{escapeHtml(video.filename || '')}}">
+                        ${{escapeHtml(video.filename || '—')}}
+                    </td>
+                    <td class="size-cell">
+                        ${{escapeHtml(video.file_size || '—')}}
+                    </td>
+                    <td class="desc-cell">
+                        ${{escapeHtml(excerpts.get(video.id) || 'No description')}}
+                    </td>
+                </tr>
+            `;
+            row = template.content.firstElementChild;
+            rowCache.set(video.id, row);
+            return row;
         }}
 
         // Sort
@@ -1087,7 +1121,24 @@ class CDVLSiteGenerator:
                 sortState.ascending = true;
             }}
 
-            // Sort data
+            sortVideos();
+
+            // Update UI
+            document.querySelectorAll('th.sortable').forEach(el => {{
+                el.classList.remove('sorted');
+                el.querySelector('.sort-arrow').textContent = '↕';
+            }});
+
+            if (th) {{
+                th.classList.add('sorted');
+                th.querySelector('.sort-arrow').textContent = sortState.ascending ? '↑' : '↓';
+            }}
+
+            renderTable();
+        }}
+
+        function sortVideos() {{
+            const column = sortState.column;
             filteredVideos.sort((a, b) => {{
                 let aVal = a[column] || '';
                 let bVal = b[column] || '';
@@ -1104,19 +1155,6 @@ class CDVLSiteGenerator:
                 if (aVal > bVal) return sortState.ascending ? 1 : -1;
                 return 0;
             }});
-
-            // Update UI
-            document.querySelectorAll('th.sortable').forEach(el => {{
-                el.classList.remove('sorted');
-                el.querySelector('.sort-arrow').textContent = '↕';
-            }});
-
-            if (th) {{
-                th.classList.add('sorted');
-                th.querySelector('.sort-arrow').textContent = sortState.ascending ? '↑' : '↓';
-            }}
-
-            renderTable();
         }}
 
         // Selection
@@ -1127,8 +1165,12 @@ class CDVLSiteGenerator:
                 }} else {{
                     selectedVideoIds.delete(video.id);
                 }}
+                const row = rowCache.get(video.id);
+                if (row) {{
+                    row.classList.toggle('selected', checked);
+                    row.querySelector('input').checked = checked;
+                }}
             }});
-            renderTable();
             updateUI();
         }}
 
@@ -1169,7 +1211,7 @@ class CDVLSiteGenerator:
 
         // Modal
         function openModal(videoId) {{
-            const video = videos.find(v => v.id === videoId);
+            const video = videoById.get(videoId);
             if (!video) return;
 
             currentModalVideoId = videoId;
