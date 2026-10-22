@@ -11,8 +11,8 @@ from typing import Any, Optional
 
 import aiohttp
 from bs4 import BeautifulSoup
-from tqdm import tqdm
 
+from cdvl_crawler.ui import download_progress
 from cdvl_crawler.utils import (
     create_session,
     get_credentials,
@@ -207,7 +207,7 @@ class CDVLDownloader:
         video_url = f"{self.config['endpoints']['video_base_url']}?videoid={video_id}"
 
         try:
-            logger.info(f"Fetching video page for ID {video_id}...")
+            logger.debug(f"Fetching video page for ID {video_id}...")
 
             # Get the video page to extract form tokens
             async with self.session.get(video_url) as response:
@@ -259,7 +259,7 @@ class CDVLDownloader:
                 verification_token = token_input.get("value")
                 ufprt_token = ufprt_input.get("value") if ufprt_input else ""
 
-                logger.info("Generating download link...")
+                logger.debug("Generating download link...")
 
             # Submit the form to generate download link
             form_data = aiohttp.FormData()
@@ -293,7 +293,7 @@ class CDVLDownloader:
                     cells = row.find_all("td")
                     if len(cells) >= 2 and "Other" in cells[0].get_text():
                         download_url = cells[1].get_text(strip=True)
-                        logger.info(f"✓ Download link generated: {download_url}")
+                        logger.debug(f"Download link generated: {download_url}")
                         return download_url
 
                 # Fallback: try to find any GetFileDownload URL
@@ -306,7 +306,7 @@ class CDVLDownloader:
                             parts = text.split()
                             for part in parts:
                                 if "GetFileDownload" in part:
-                                    logger.info(f"✓ Download link generated: {part}")
+                                    logger.debug(f"Download link generated: {part}")
                                     return part
 
                 logger.error("Could not extract download URL from table")
@@ -345,9 +345,9 @@ class CDVLDownloader:
         if enable_resume and video_id is not None:
             supports_ranges, expected_length = await self._probe_range_support(url)
             if supports_ranges:
-                logger.info("Server supports range requests")
+                logger.debug("Server supports range requests")
             else:
-                logger.info("Server does not support range requests")
+                logger.debug("Server does not support range requests")
 
         try:
             # For resume support, we need to check partial files based on video_id
@@ -400,7 +400,7 @@ class CDVLDownloader:
                 # Check response status
                 if resume_from > 0:
                     if response.status == 206:
-                        logger.info("Resume accepted by server (206 Partial Content)")
+                        logger.debug("Resume accepted by server (206 Partial Content)")
                     elif response.status == 200:
                         # Server ignored range request, start from beginning
                         logger.warning(
@@ -445,7 +445,7 @@ class CDVLDownloader:
                         final_path = self.output_dir / output_path
                 elif parsed_filename:
                     final_path = self.output_dir / parsed_filename
-                    logger.info(f"Filename from server: {parsed_filename}")
+                    logger.debug(f"Filename from server: {parsed_filename}")
                 else:
                     # Fallback: use video_id if available
                     if video_id is not None:
@@ -461,7 +461,7 @@ class CDVLDownloader:
                         else:
                             final_path = self.output_dir / "cdvl_video_unknown.bin"
 
-                logger.info(f"Target file: {final_path}")
+                logger.debug(f"Target file: {final_path}")
 
                 # Get content length for this response
                 response_length_str = response.headers.get("Content-Length")
@@ -475,7 +475,7 @@ class CDVLDownloader:
                     total_size = resume_from + response_length
 
                 if total_size:
-                    logger.info(f"Total size: {self._format_bytes(total_size)}")
+                    logger.debug(f"Total size: {self._format_bytes(total_size)}")
 
                 # Determine which partial file to use
                 # If resuming, use the video_id-based partial file
@@ -508,20 +508,14 @@ class CDVLDownloader:
                 file_mode = "ab" if resume_from > 0 else "wb"
 
                 with open(partial_path, file_mode) as f:
-                    with tqdm(
-                        total=total_size,
-                        initial=resume_from,
-                        unit="B",
-                        unit_scale=True,
-                        unit_divisor=1024,
-                        desc=final_path.name,
-                        disable=not total_size,
-                    ) as pbar:
+                    with download_progress() as progress:
+                        task = progress.add_task(
+                            final_path.name, total=total_size, completed=resume_from
+                        )
                         async for chunk in response.content.iter_chunked(chunk_size):
                             f.write(chunk)
                             bytes_written += len(chunk)
-                            if total_size:
-                                pbar.update(len(chunk))
+                            progress.update(task, advance=len(chunk))
 
             # Verify file size
             final_size = partial_path.stat().st_size
@@ -545,7 +539,7 @@ class CDVLDownloader:
             if meta_path and meta_path.exists():
                 meta_path.unlink()
 
-            logger.info(f"✓ Downloaded to: {final_path}")
+            logger.info(f"Downloaded to: {final_path}")
             return True
 
         except Exception as e:

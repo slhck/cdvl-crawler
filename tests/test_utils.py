@@ -10,6 +10,8 @@ import pytest
 
 from cdvl_crawler.utils import (
     load_config,
+    load_jsonl,
+    parse_id_list,
     parse_content_disposition,
     get_credentials,
     require_license_acceptance,
@@ -97,3 +99,30 @@ class TestRequireLicenseAcceptance:
                 assert require_license_acceptance(auto_accept=False) is True
             with patch("builtins.input", return_value="no"):
                 assert require_license_acceptance(auto_accept=False) is False
+
+
+class TestParseIdList:
+    """Tests for parse_id_list()"""
+
+    def test_single_and_ranges(self):
+        assert parse_id_list("5, 1,10-12") == [1, 5, 10, 11, 12]
+
+    def test_removes_duplicates(self):
+        assert parse_id_list("3,3,2-4") == [2, 3, 4]
+
+    @pytest.mark.parametrize("text", ["", "abc", "0", "5-3", "1,,x"])
+    def test_invalid(self, text):
+        with pytest.raises(ValueError):
+            parse_id_list(text)
+
+
+class TestLoadJsonl:
+    """Tests for load_jsonl()"""
+
+    def test_missing_file(self, temp_dir):
+        assert load_jsonl(temp_dir / "missing.jsonl") == []
+
+    def test_skips_invalid_lines(self, temp_dir):
+        path = temp_dir / "data.jsonl"
+        path.write_text('{"id": 1}\nnot json\n\n{"id": 2}\n')
+        assert [r["id"] for r in load_jsonl(path)] == [1, 2]

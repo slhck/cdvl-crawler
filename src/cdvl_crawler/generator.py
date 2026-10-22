@@ -47,7 +47,7 @@ class CDVLSiteGenerator:
                 except json.JSONDecodeError as e:
                     logger.warning(f"Failed to parse line {line_num}: {e}")
 
-        logger.info(f"Loaded {len(videos)} videos from {self.input_file}")
+        logger.debug(f"Loaded {len(videos)} videos from {self.input_file}")
         return videos
 
     def truncate_text(self, text: str, max_length: int = 150) -> str:
@@ -1321,7 +1321,7 @@ class CDVLSiteGenerator:
         Returns:
             True if successful, False otherwise
         """
-        logger.info(f"Generating static site from {self.input_file}")
+        logger.debug(f"Generating static site from {self.input_file}")
 
         # Load videos
         videos = self.load_videos()
@@ -1340,9 +1340,10 @@ class CDVLSiteGenerator:
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(html)
 
-            logger.info(f"✓ Generated static site: {self.output_file}")
-            logger.info(f"  Videos included: {len(videos)}")
-            logger.info(f"  File size: {output_path.stat().st_size / 1024:.1f} KB")
+            logger.info(
+                f"Included {len(videos)} videos "
+                f"({output_path.stat().st_size / 1024:.1f} KB)"
+            )
             return True
 
         except Exception as e:

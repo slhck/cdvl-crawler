@@ -48,7 +48,7 @@ Python tools for crawling and downloading videos from the [CDVL](https://cdvl.or
 
 This package provides a unified command-line tool for working with CDVL:
 
-**`cdvl-crawler`** with three subcommands:
+**`cdvl-crawler`**, which starts an interactive menu when run without arguments, or runs one of these subcommands directly:
 
 - **`crawl`** - Crawls and extracts metadata from all videos and datasets on CDVL
 - **`download`** - Downloads individual videos by their ID
@@ -60,9 +60,10 @@ Features:
 - **Automatic Login**: Handles authentication automatically with username/password
 - **Parallel Crawling**: Concurrent requests for efficient data collection
 - **Smart Enumeration**: Automatically discovers videos and datasets by ID
-- **Auto-Resume**: Continues from the last crawled ID if interrupted
+- **Auto-Resume**: Continues from the last crawled ID if interrupted; press `q` to stop a running crawl
 - **Structured Output**: JSONL format for easy data processing
-- **Progress Tracking**: Real-time progress bars showing success/empty/failed counts
+- **Interactive Mode**: Menu-driven usage with search, selection lists and sensible defaults
+- **Progress Tracking**: Colorful progress bars showing found/empty/failed counts
 - **Download Management**: Handles large file downloads with progress indicators
 - **Static Site Generator**: Creates a beautiful, searchable HTML interface for browsing videos
 
@@ -76,6 +77,7 @@ Features:
 Install [with `uvx`](https://docs.astral.sh/uv/getting-started/installation/):
 
 ```bash
+uvx cdvl-crawler          # interactive menu
 uvx cdvl-crawler --help
 uvx cdvl-crawler crawl --help
 uvx cdvl-crawler download --help
@@ -98,6 +100,20 @@ pip3 install --user cdvl-crawler
 We assume you will be using `uvx`, otherwise just run `cdvl-crawler` directly without `uvx` after installing from `pipx` or `pip`.
 
 ## Usage
+
+### Interactive Mode
+
+Run `cdvl-crawler` without a subcommand to open the interactive menu:
+
+```bash
+uvx cdvl-crawler
+```
+
+The menu shows your configuration and the number of already crawled records, and lets you crawl metadata, download videos, generate the HTML site, or export to CSV. To download videos, you can search the crawled metadata by title, filename or description and select results from a list, or enter IDs directly. The license agreement is shown once per session.
+
+The subcommands below do the same without prompts, which is useful for scripts. Add `-v` for detailed log output.
+
+### Credentials
 
 Before using the tool, you need to provide your CDVL credentials. The tool supports three methods for providing credentials (in order of priority):
 
@@ -199,7 +215,7 @@ uvx cdvl-crawler download 42 --output-dir ./downloads
 uvx cdvl-crawler download 42 --accept-license
 
 # Download multiple videos (comma-separated)
-uvx cdvl-crawler download 1,5,10,20 --output-dir ./videos
+uvx cdvl-crawler download 1,5,10-20 --output-dir ./videos
 
 # Get download URL without downloading
 uvx cdvl-crawler download 42 --dry-run

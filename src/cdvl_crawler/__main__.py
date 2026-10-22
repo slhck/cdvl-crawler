@@ -5,29 +5,31 @@ CLI entry point for CDVL Crawler
 
 import argparse
 import asyncio
+import importlib.metadata
 import logging
 import os
 import sys
 
-from cdvl_crawler.crawler import CDVLCrawler
-from cdvl_crawler.downloader import CDVLDownloader
-from cdvl_crawler.exporter import CDVLExporter
-from cdvl_crawler.generator import CDVLSiteGenerator
-from cdvl_crawler.utils import require_license_acceptance
+from cdvl_crawler import commands
+from cdvl_crawler.ui import console, error, setup_logging
+from cdvl_crawler.utils import parse_id_list, require_license_acceptance
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
 logger = logging.getLogger(__name__)
+
+VERSION = importlib.metadata.version("cdvl_crawler")
 
 
 def main():
     """Main entry point for CDVL CLI"""
     parser = argparse.ArgumentParser(
         prog="cdvl-crawler",
-        description="Tools for crawling and downloading videos from CDVL",
+        description="Tools for crawling and downloading videos from CDVL. "
+        "Run without a command to start the interactive menu.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Show debug output"
     )
 
     # Add config argument at top level
@@ -40,7 +42,6 @@ def main():
 
     # Create subparsers for commands
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
-    subparsers.required = True
 
     # Crawl command
     crawl_parser = subparsers.add_parser(
@@ -116,8 +117,8 @@ Examples:
   # Download single video
   cdvl-crawler download 42
 
-  # Download multiple videos (comma-separated)
-  cdvl-crawler download 1,5,10,20
+  # Download multiple videos (comma-separated, ranges allowed)
+  cdvl-crawler download 1,5,10-20
 
   # Get download URL without downloading
   cdvl-crawler download 42 --dry-run
@@ -132,7 +133,7 @@ Examples:
     download_parser.add_argument(
         "video_ids",
         type=str,
-        help="Video ID(s) to download (comma-separated for multiple)",
+        help="Video ID(s) to download (comma-separated, ranges allowed, e.g. 1,5,10-12)",
     )
     download_parser.add_argument(
         "--dry-run", action="store_true", help="Print download URL without downloading"
@@ -220,155 +221,96 @@ Examples:
     )
 
     args = parser.parse_args()
+    setup_logging(args.verbose)
 
     # If no config specified, check if config.json exists in current directory
     if args.config is None and os.path.exists("config.json"):
         args.config = "config.json"
-        logger.info("Found config.json in current directory")
+        logger.debug("Found config.json in current directory")
 
-    # Run the appropriate command
-    if args.command == "crawl":
-        asyncio.run(run_crawler(args))
-    elif args.command == "download":
-        asyncio.run(run_downloader(args))
-    elif args.command == "generate-site":
-        run_generator(args)
-    elif args.command == "export":
-        run_exporter(args)
+    try:
+        if args.command is None:
+            if not sys.stdin.isatty():
+                parser.print_help()
+                sys.exit(2)
+            from cdvl_crawler.interactive import run_interactive
+
+            sys.exit(run_interactive(args.config, VERSION))
+        elif args.command == "crawl":
+            ok = asyncio.run(run_crawler(args))
+        elif args.command == "download":
+            ok = asyncio.run(run_downloader(args))
+        elif args.command == "generate-site":
+            ok = commands.generate_site(args.input, args.output)
+        else:
+            columns = (
+                [col.strip() for col in args.columns.split(",")]
+                if args.columns
+                else None
+            )
+            ok = commands.export(args.input, args.output, columns)
+    except KeyboardInterrupt:
+        console.print()
+        error("Interrupted")
+        sys.exit(130)
+
+    sys.exit(0 if ok else 1)
 
 
-async def run_crawler(args):
+def check_license(accept: bool) -> None:
+    """Exit unless the license agreement is accepted"""
+    if not require_license_acceptance(auto_accept=accept):
+        error("License agreement not accepted. Exiting.")
+        sys.exit(1)
+
+
+async def run_crawler(args) -> bool:
     """Run the crawler"""
-    # Check license acceptance
-    if not require_license_acceptance(auto_accept=args.accept_license):
-        logger.error("License agreement not accepted. Exiting.")
-        sys.exit(1)
+    check_license(args.accept_license)
 
-    # Build overrides dict from CLI arguments
-    overrides = {}
-    if args.start_video_id is not None:
-        overrides["start_video_id"] = args.start_video_id
-    if args.start_dataset_id is not None:
-        overrides["start_dataset_id"] = args.start_dataset_id
-    if args.max_concurrent is not None:
-        overrides["max_concurrent_requests"] = args.max_concurrent
-    if args.max_failures is not None:
-        overrides["max_consecutive_failures"] = args.max_failures
-    if args.delay is not None:
-        overrides["request_delay"] = args.delay
-    if args.probe_step is not None:
-        overrides["probe_step"] = args.probe_step
-    if args.max_probe_attempts is not None:
-        overrides["max_probe_attempts"] = args.max_probe_attempts
-    if args.max_video_id is not None:
-        overrides["max_video_id"] = args.max_video_id
-    if args.max_dataset_id is not None:
-        overrides["max_dataset_id"] = args.max_dataset_id
+    # Map CLI arguments to config keys
+    option_keys = {
+        "start_video_id": "start_video_id",
+        "start_dataset_id": "start_dataset_id",
+        "max_concurrent": "max_concurrent_requests",
+        "max_failures": "max_consecutive_failures",
+        "delay": "request_delay",
+        "probe_step": "probe_step",
+        "max_probe_attempts": "max_probe_attempts",
+        "max_video_id": "max_video_id",
+        "max_dataset_id": "max_dataset_id",
+    }
+    overrides = {
+        key: getattr(args, arg)
+        for arg, key in option_keys.items()
+        if getattr(args, arg) is not None
+    }
 
-    crawler = CDVLCrawler(
-        config_path=args.config, output_dir=args.output_dir, overrides=overrides
-    )
-    await crawler.crawl()
+    return await commands.crawl(args.config, args.output_dir, overrides)
 
 
-async def run_downloader(args):
+async def run_downloader(args) -> bool:
     """Run the downloader with parsed arguments"""
-    # Check license acceptance
-    if not require_license_acceptance(auto_accept=args.accept_license):
-        logger.error("License agreement not accepted. Exiting.")
-        sys.exit(1)
+    check_license(args.accept_license)
 
-    # Parse video IDs
     try:
-        video_ids = [int(id.strip()) for id in args.video_ids.split(",")]
-        if not all(vid > 0 for vid in video_ids):
-            logger.error("Video IDs must be positive integers")
-            sys.exit(1)
+        video_ids = parse_id_list(args.video_ids)
     except ValueError:
-        logger.error(
-            "Invalid video ID format. Use comma-separated integers (e.g., 1,5,10)"
-        )
+        error("Invalid video IDs. Use positive integers and ranges (e.g., 1,5,10-12)")
         sys.exit(1)
 
-    # Validate output parameter
     if args.output and len(video_ids) > 1:
-        logger.error("--output can only be used with a single video ID")
+        error("--output can only be used with a single video ID")
         sys.exit(1)
 
-    # Download all selected videos
-    downloader = CDVLDownloader(config_path=args.config, output_dir=args.output_dir)
-    await downloader._init_session()
-
-    try:
-        # Login once for all downloads
-        if not await downloader._login():
-            logger.error("Login failed. Exiting.")
-            sys.exit(1)
-
-        print(f"\nDownloading {len(video_ids)} video(s)...\n")
-
-        success_count = 0
-        for i, video_id in enumerate(video_ids, 1):
-            print(f"\n[{i}/{len(video_ids)}] Processing video ID {video_id}...")
-
-            # Get download link
-            download_url = await downloader.get_download_link(video_id)
-            if not download_url:
-                logger.error(f"Failed to get download link for video {video_id}")
-                continue
-
-            if args.dry_run:
-                # Just print the URL
-                print(f"Video {video_id}: {download_url}")
-                success_count += 1
-            else:
-                # Download the file
-                success = await downloader.download_file(
-                    download_url,
-                    output_path=args.output if len(video_ids) == 1 else None,
-                    video_id=video_id,
-                    enable_resume=not args.no_resume,
-                )
-                if success:
-                    success_count += 1
-
-        print(f"\n✓ Successfully processed {success_count}/{len(video_ids)} video(s)")
-        sys.exit(0 if success_count == len(video_ids) else 1)
-
-    finally:
-        await downloader._close_session()
-
-
-def run_generator(args):
-    """Run the static site generator"""
-    generator = CDVLSiteGenerator(input_file=args.input, output_file=args.output)
-
-    if generator.generate():
-        print(f"\n✓ Static site generated successfully: {args.output}")
-        print("  Open the file in your browser to view the video library")
-        sys.exit(0)
-    else:
-        logger.error("Failed to generate static site")
-        sys.exit(1)
-
-
-def run_exporter(args):
-    """Run the CSV exporter"""
-    # Parse columns if provided
-    columns = None
-    if args.columns:
-        columns = [col.strip() for col in args.columns.split(",")]
-
-    exporter = CDVLExporter(
-        input_file=args.input, output_file=args.output, columns=columns
+    return await commands.download(
+        args.config,
+        args.output_dir,
+        video_ids,
+        output=args.output,
+        dry_run=args.dry_run,
+        resume=not args.no_resume,
     )
-
-    if exporter.export():
-        print(f"\n✓ Export successful: {args.output}")
-        sys.exit(0)
-    else:
-        logger.error("Failed to export data")
-        sys.exit(1)
 
 
 if __name__ == "__main__":

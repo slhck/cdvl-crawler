@@ -13,7 +13,8 @@ from typing import Any, Dict, Literal, Optional, cast
 
 import aiohttp
 from bs4 import BeautifulSoup
-from tqdm import tqdm
+from rich.progress import Progress, TaskID
+from rich.table import Table
 
 from cdvl_crawler.types import (
     DatasetData,
@@ -22,6 +23,7 @@ from cdvl_crawler.types import (
     PartialContentData,
     VideoData,
 )
+from cdvl_crawler.ui import console, crawl_progress, on_keypress
 from cdvl_crawler.utils import (
     create_session,
     get_credentials,
@@ -58,9 +60,9 @@ class CDVLCrawler:
         self.video_lock = Lock()
         self.dataset_lock = Lock()
 
-        # Progress bars
-        self.video_pbar: Optional[tqdm] = None
-        self.dataset_pbar: Optional[tqdm] = None
+        # Progress display with one task per content type
+        self.progress: Optional[Progress] = None
+        self.stop_requested = False
 
         # Statistics
         self.stats = {
@@ -299,9 +301,43 @@ class CDVLCrawler:
             logger.error(f"Dataset {dataset_id}: Error - {e}")
             return None
 
+    def _add_progress_task(
+        self, label: str, start_id: int, max_id: Optional[int]
+    ) -> Optional[TaskID]:
+        """Add a progress task; the bar is determinate only if a maximum ID is set"""
+        if self.progress is None:
+            return None
+        total = max(max_id - start_id + 1, 0) if max_id is not None else None
+        return self.progress.add_task(
+            label, total=total, current_id=start_id, success=0, empty=0, failed=0
+        )
+
+    def _update_progress_task(
+        self, task: Optional[TaskID], stat_key: str, advance: int, current_id: int
+    ):
+        """Advance a progress task and refresh its statistics"""
+        if self.progress is None or task is None:
+            return
+        stats = self.stats[stat_key]
+        self.progress.update(
+            task,
+            advance=advance,
+            current_id=current_id,
+            success=stats["success"],
+            empty=stats["empty"],
+            failed=stats["failed"],
+        )
+
+    def _finish_progress_task(self, task: Optional[TaskID]):
+        """Mark a progress task as complete"""
+        if self.progress is None or task is None:
+            return
+        completed = self.progress.tasks[task].completed
+        self.progress.update(task, total=completed, completed=completed)
+
     async def _crawl_videos(self, start_id: int = 1, max_concurrent: int = 5):
         """Crawl all videos with parallel requests and sequential scanning"""
-        logger.info("Starting video crawler...")
+        logger.debug("Starting video crawler...")
         output_file = str(self.output_dir / self.config["output"]["videos_file"])
         consecutive_failures = 0
         max_failures = self.config.get("max_consecutive_failures", 1000)
@@ -310,9 +346,8 @@ class CDVLCrawler:
         current_id = start_id
         semaphore = asyncio.Semaphore(max_concurrent)
 
-        # Create progress bar
-        self.video_pbar = tqdm(
-            desc="Videos", unit="video", position=0, leave=True, dynamic_ncols=True
+        task = self._add_progress_task(
+            "Videos", start_id, self.config.get("max_video_id")
         )
 
         async def fetch_with_semaphore(vid_id):
@@ -322,6 +357,9 @@ class CDVLCrawler:
         try:
             while True:
                 # Check if we've hit the consecutive failures limit
+                if self.stop_requested:
+                    break
+
                 if consecutive_failures >= max_failures:
                     logger.info(
                         f"No videos found after {consecutive_failures} consecutive attempts. Stopping."
@@ -362,26 +400,18 @@ class CDVLCrawler:
                         self.stats["videos"]["failed"] += 1
                         consecutive_failures += 1
 
-                    # Update progress bar
-                    self.video_pbar.update(1)
-                    self.video_pbar.set_postfix(
-                        success=self.stats["videos"]["success"],
-                        empty=self.stats["videos"]["empty"],
-                        failed=self.stats["videos"]["failed"],
-                    )
-
                 current_id += batch_size
+                self._update_progress_task(task, "videos", batch_size, current_id)
 
                 # Add small delay to be respectful
                 await asyncio.sleep(self.config.get("request_delay", 0.1))
 
         finally:
-            if self.video_pbar is not None:
-                self.video_pbar.close()
+            self._finish_progress_task(task)
 
     async def _crawl_datasets(self, start_id: int = 1, max_concurrent: int = 5):
         """Crawl all datasets with parallel requests and sequential scanning"""
-        logger.info("Starting dataset crawler...")
+        logger.debug("Starting dataset crawler...")
         output_file = str(self.output_dir / self.config["output"]["datasets_file"])
         consecutive_failures = 0
         max_failures = self.config.get("max_consecutive_failures", 1000)
@@ -390,9 +420,8 @@ class CDVLCrawler:
         current_id = start_id
         semaphore = asyncio.Semaphore(max_concurrent)
 
-        # Create progress bar
-        self.dataset_pbar = tqdm(
-            desc="Datasets", unit="dataset", position=1, leave=True, dynamic_ncols=True
+        task = self._add_progress_task(
+            "Datasets", start_id, self.config.get("max_dataset_id")
         )
 
         async def fetch_with_semaphore(ds_id):
@@ -402,6 +431,9 @@ class CDVLCrawler:
         try:
             while True:
                 # Check if we've hit the consecutive failures limit
+                if self.stop_requested:
+                    break
+
                 if consecutive_failures >= max_failures:
                     logger.info(
                         f"No datasets found after {consecutive_failures} consecutive attempts. Stopping."
@@ -442,32 +474,28 @@ class CDVLCrawler:
                         self.stats["datasets"]["failed"] += 1
                         consecutive_failures += 1
 
-                    # Update progress bar
-                    self.dataset_pbar.update(1)
-                    self.dataset_pbar.set_postfix(
-                        success=self.stats["datasets"]["success"],
-                        empty=self.stats["datasets"]["empty"],
-                        failed=self.stats["datasets"]["failed"],
-                    )
-
                 current_id += batch_size
+                self._update_progress_task(task, "datasets", batch_size, current_id)
 
                 # Add small delay to be respectful
                 await asyncio.sleep(self.config.get("request_delay", 0.1))
 
         finally:
-            if self.dataset_pbar is not None:
-                self.dataset_pbar.close()
+            self._finish_progress_task(task)
 
-    async def crawl(self):
-        """Main crawl function - runs both crawlers in parallel"""
+    async def crawl(self) -> bool:
+        """Main crawl function - runs both crawlers in parallel
+
+        Returns:
+            True if the crawl ran, False if login failed
+        """
         await self._init_session()
 
         try:
             # Perform login first
             if not await self._login():
                 logger.error("Login failed. Exiting.")
-                return
+                return False
 
             # Create output files if they don't exist
             videos_file = str(self.output_dir / self.config["output"]["videos_file"])
@@ -501,28 +529,55 @@ class CDVLCrawler:
 
             max_concurrent = self.config.get("max_concurrent_requests", 5)
 
-            logger.info("Starting crawlers in parallel...")
-            await asyncio.gather(
-                self._crawl_videos(start_video_id, max_concurrent),
-                self._crawl_datasets(start_dataset_id, max_concurrent),
-            )
+            logger.debug("Starting crawlers in parallel...")
+            with (
+                on_keypress("qQ", self.stop) as listening,
+                crawl_progress() as self.progress,
+            ):
+                if listening:
+                    console.print(
+                        "[muted]Press [bold]q[/bold] to stop the crawl[/muted]"
+                    )
+                await asyncio.gather(
+                    self._crawl_videos(start_video_id, max_concurrent),
+                    self._crawl_datasets(start_dataset_id, max_concurrent),
+                )
+            self.progress = None
 
-            logger.info("\n" + "=" * 60)
-            logger.info("CRAWL COMPLETE")
-            logger.info("=" * 60)
-            logger.info(
-                f"Videos: {self.stats['videos']['success']} successful, "
-                f"{self.stats['videos']['empty']} empty, "
-                f"{self.stats['videos']['failed']} failed"
-            )
-            logger.info(
-                f"Datasets: {self.stats['datasets']['success']} successful, "
-                f"{self.stats['datasets']['empty']} empty, "
-                f"{self.stats['datasets']['failed']} failed"
-            )
-            logger.info("\nOutput files:")
-            logger.info(f"  - {videos_file}")
-            logger.info(f"  - {datasets_file}")
+            self._print_summary(videos_file, datasets_file)
+            return True
 
         finally:
             await self._close_session()
+
+    def stop(self):
+        """Stop crawling after the current batch"""
+        if not self.stop_requested:
+            self.stop_requested = True
+            logger.info("Stopping after the current batch...")
+
+    def _print_summary(self, videos_file: str, datasets_file: str):
+        """Print a table with crawl statistics and output files"""
+        if self.stop_requested:
+            table = Table(title="Crawl stopped", title_style="bold yellow")
+        else:
+            table = Table(title="Crawl complete", title_style="bold green")
+        table.add_column("Type", style="bold")
+        table.add_column("Found", justify="right", style="green")
+        table.add_column("Empty", justify="right", style="dim")
+        table.add_column("Failed", justify="right", style="red")
+        table.add_column("Output file", style="cyan", overflow="fold")
+        for label, key, path in (
+            ("Videos", "videos", videos_file),
+            ("Datasets", "datasets", datasets_file),
+        ):
+            stats = self.stats[key]
+            table.add_row(
+                label,
+                str(stats["success"]),
+                str(stats["empty"]),
+                str(stats["failed"]),
+                path,
+            )
+        console.print()
+        console.print(table)

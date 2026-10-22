@@ -159,7 +159,7 @@ class CDVLExporter:
                     row = [self._flatten_value(record.get(col)) for col in columns]
                     writer.writerow(row)
 
-            logger.info(f"Exported {len(records)} records to {self.output_file}")
+            logger.info(f"Exported {len(records)} records")
             return True
 
         except OSError as e:

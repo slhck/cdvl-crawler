@@ -7,12 +7,16 @@ import json
 import logging
 import os
 import re
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 from urllib.parse import unquote
 
 import aiohttp
 from bs4 import BeautifulSoup
+from rich.panel import Panel
 from yarl import URL
+
+from cdvl_crawler.ui import console
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +90,17 @@ who assumes the management of the CDVL Web.
 """
 
 
+def _reflow(text: str) -> str:
+    """Join hard-wrapped lines into paragraphs and drop separator lines"""
+    paragraphs = []
+    for block in re.split(r"\n\s*\n", text.strip()):
+        lines = [line.strip() for line in block.splitlines()]
+        lines = [line for line in lines if line and set(line) != {"="}]
+        if lines:
+            paragraphs.append(" ".join(lines))
+    return "\n\n".join(paragraphs)
+
+
 def require_license_acceptance(auto_accept: bool = False) -> bool:
     """
     Display CDVL license agreement and require user acceptance
@@ -100,21 +115,34 @@ def require_license_acceptance(auto_accept: bool = False) -> bool:
         logger.info("License automatically accepted via --accept-license flag")
         return True
 
-    print(CDVL_LICENSE)
-    print("\nBy using this tool to access CDVL content, you agree to the terms above.")
+    console.print(
+        Panel(
+            _reflow(CDVL_LICENSE),
+            title="[bold]CDVL License Agreement[/bold]",
+            border_style="cyan",
+            padding=(1, 2),
+        )
+    )
+    console.print(
+        "By using this tool to access CDVL content, you agree to the terms above."
+    )
 
     while True:
         response = (
-            input("\nDo you accept these terms? Type 'yes' or 'no': ").strip().lower()
+            console.input(
+                "\n[bold]Do you accept these terms?[/bold] [muted](yes/no)[/muted] "
+            )
+            .strip()
+            .lower()
         )
         if response in ("yes", "y"):
-            logger.info("License accepted by user")
+            logger.debug("License accepted by user")
             return True
         elif response in ("no", "n"):
-            logger.info("License rejected by user")
+            logger.debug("License rejected by user")
             return False
         else:
-            print("Please answer 'yes' or 'no'")
+            console.print("[warning]Please answer 'yes' or 'no'[/warning]")
 
 
 def get_default_config() -> Dict[str, Any]:
@@ -158,7 +186,7 @@ def load_config(config_path: Optional[str]) -> Dict[str, Any]:
     try:
         with open(config_path, "r") as f:
             user_config = json.load(f)
-        logger.info(f"Loaded configuration from {config_path}")
+        logger.debug(f"Loaded configuration from {config_path}")
 
         # Deep merge: user config overrides defaults
         # For nested dicts like endpoints and headers, merge individually
@@ -206,17 +234,17 @@ def get_credentials(config: Dict[str, Any]) -> Tuple[str, str]:
     if not username:
         username = os.environ.get("CDVL_USERNAME", "")
         if username:
-            logger.info("Using username from CDVL_USERNAME environment variable")
+            logger.debug("Using username from CDVL_USERNAME environment variable")
 
     if not password:
         password = os.environ.get("CDVL_PASSWORD", "")
         if password:
-            logger.info("Using password from CDVL_PASSWORD environment variable")
+            logger.debug("Using password from CDVL_PASSWORD environment variable")
 
     # Prompt user if still missing
     if not username:
         logger.info("No credentials found in config or environment variables")
-        username = input("Enter CDVL username (email): ").strip()
+        username = console.input("[bold]CDVL username (email):[/bold] ").strip()
 
     if not password:
         password = getpass.getpass("Enter CDVL password: ").strip()
@@ -261,7 +289,7 @@ async def login_to_cdvl(
         return False
 
     try:
-        logger.info("Fetching login page to get CSRF tokens...")
+        logger.debug("Fetching login page to get CSRF tokens...")
 
         # First, get the login page to extract tokens
         async with session.get(login_url) as response:
@@ -284,7 +312,7 @@ async def login_to_cdvl(
             ufprt_input = soup.find("input", {"name": "ufprt"})
             ufprt_token = ufprt_input.get("value") if ufprt_input else ""
 
-            logger.info("Extracted CSRF tokens successfully")
+            logger.debug("Extracted CSRF tokens successfully")
 
         # Prepare login form data
         form_data = aiohttp.FormData()
@@ -306,14 +334,14 @@ async def login_to_cdvl(
             final_url = str(response.url)
 
             if response.status == 200 and "members-section" in final_url:
-                logger.info("✓ Login successful!")
+                logger.info("Login successful!")
 
                 # Verify we have session cookies
                 cookies = session.cookie_jar.filter_cookies(URL("https://www.cdvl.org"))
                 if ".AspNetCore.Identity.Application" in [
                     c.key for c in cookies.values()
                 ]:
-                    logger.info("✓ Session cookies established")
+                    logger.debug("Session cookies established")
                     return True
                 else:
                     logger.warning(
@@ -366,3 +394,50 @@ def parse_content_disposition(content_disp: Optional[str]) -> Optional[str]:
             return unquote(filename.strip("\"'"))
 
     return None
+
+
+def parse_id_list(text: str) -> list[int]:
+    """Parse a list of IDs such as "1,5,10-12" into a sorted list without duplicates
+
+    Raises:
+        ValueError: If the text contains anything other than positive integers and ranges
+    """
+    ids: set[int] = set()
+    for part in text.replace(" ", "").split(","):
+        if not part:
+            continue
+        if "-" in part:
+            start_str, end_str = part.split("-", 1)
+            start, end = int(start_str), int(end_str)
+            if start > end:
+                raise ValueError(f"Invalid range: {part}")
+            ids.update(range(start, end + 1))
+        else:
+            ids.add(int(part))
+    if not ids:
+        raise ValueError("No IDs given")
+    if min(ids) < 1:
+        raise ValueError("IDs must be positive integers")
+    return sorted(ids)
+
+
+def load_jsonl(path: str | Path) -> list[Dict[str, Any]]:
+    """Load all records from a JSONL file, skipping invalid lines
+
+    Returns:
+        List of records, or an empty list if the file does not exist
+    """
+    records: list[Dict[str, Any]] = []
+    path = Path(path)
+    if not path.exists():
+        return records
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return records

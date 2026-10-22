@@ -15,7 +15,8 @@ CDVL Crawler is a Python CLI tool for crawling and downloading videos from the C
 
 **Setup and run with uv (recommended):**
 ```bash
-# Run the CLI
+# Run the CLI (no subcommand starts the interactive menu)
+uv run cdvl-crawler
 uv run cdvl-crawler --help
 uv run cdvl-crawler crawl --help
 uv run cdvl-crawler crawl
@@ -74,6 +75,9 @@ uv run pytest tests/ -v
 ### Entry Point and CLI (`__main__.py`)
 
 - Uses `argparse` with subcommands (`crawl`, `download`, `generate-site`, `export`)
+- Without a subcommand (and with a TTY on stdin), starts the interactive menu from `interactive.py`
+- Subcommands delegate to functions in `commands.py`, which the interactive mode also uses
+- `-v/--verbose` enables debug log output; `--version` prints the version
 - Async commands use `asyncio.run()` to execute async functions; sync commands run directly
 - Handles CLI argument parsing and validation before delegating to main classes
 - Supports `--output-dir` option to specify where files are saved (default: current directory)
@@ -99,6 +103,12 @@ uv run pytest tests/ -v
   - `--columns`: Comma-separated list of columns to export (default: all columns)
 - CLI options override config file values, which override built-in defaults
 
+### Terminal UI
+
+- `ui.py`: Shared `rich` console, log handler with colored prefixes, banner, and progress bar factories (`crawl_progress()`, `download_progress()`), and `on_keypress()` for reading single keys during async work (termios on Unix, msvcrt on Windows). All output goes through the shared console so that log messages render above live progress bars.
+- `interactive.py`: `InteractiveSession` with a `questionary` menu (crawl, download with metadata search, generate site, export with column selection, status). Asks for license acceptance once per session.
+- `commands.py`: `crawl()`, `download()`, `generate_site()`, `export()` return `True` on success; the CLI maps this to the exit code.
+
 ### Core Components
 
 **1. CDVLCrawler (`crawler.py`)**
@@ -107,8 +117,9 @@ Main class for metadata extraction:
 - **Session Management**: Creates aiohttp session, handles CSRF-protected login
 - **Parallel Crawling**: Uses `asyncio.Semaphore` to limit concurrent requests
 - **Auto-Resume**: Reads last ID from JSONL output files to continue where it left off
+- **Stop key**: Pressing `q` during a crawl calls `stop()`, which ends both loops after the current batch (via `ui.on_keypress()`)
 - **Sequential Scanning**: Crawls IDs sequentially until 1000 consecutive failures (configurable)
-- **Progress Tracking**: Uses `tqdm` with separate progress bars for videos and datasets
+- **Progress Tracking**: Uses a `rich` progress display with one task per content type, plus a summary table at the end
 - **Content Parsing**: Uses BeautifulSoup with lxml parser to extract structured data from HTML
 - **Output**: Appends to JSONL files with thread-safe locks in configurable output directory
 
@@ -161,6 +172,8 @@ Shared authentication and HTTP functionality:
 - `login_to_cdvl()`: Two-step login process: fetch login page to get CSRF tokens, submit login form with tokens
 - `create_session()`: Creates aiohttp session with configured headers and timeouts
 - `parse_content_disposition()`: Extracts filename from HTTP headers (supports RFC 5987 encoding)
+- `parse_id_list()`: Parses ID lists with ranges (for example `1,5,10-12`)
+- `load_jsonl()`: Loads records from a JSONL file, skipping invalid lines
 
 **4. CDVLSiteGenerator (`generator.py`)**
 
@@ -294,7 +307,7 @@ The `config.example.json` file serves as a template.
 ## Important Implementation Details
 
 - **Async/await**: Entire codebase is async using aiohttp
-- **Thread safety**: Uses `threading.Lock` for JSONL file writes (needed because tqdm updates happen from different async tasks)
+- **Thread safety**: Uses `threading.Lock` for JSONL file writes
 - **BeautifulSoup typing**: Some methods return `str | list` for attributes, code includes type guards
 - **Error handling**: Distinguishes between "empty" (valid response, no content), "failed" (HTTP error), and exceptions
 - **Rate limiting**: Uses `asyncio.sleep()` between batches to avoid server strain
@@ -307,6 +320,9 @@ The `config.example.json` file serves as a template.
 src/cdvl_crawler/
 ├── __init__.py        # Package exports (CDVLCrawler, CDVLDownloader, CDVLExporter, CDVLSiteGenerator)
 ├── __main__.py        # CLI entry point (crawl, download, generate-site, export subcommands)
+├── commands.py        # Command implementations shared by CLI and interactive mode
+├── interactive.py     # Interactive menu mode
+├── ui.py              # Console, logging, progress bars
 ├── crawler.py         # CDVLCrawler class
 ├── downloader.py      # CDVLDownloader class
 ├── exporter.py        # CDVLExporter class
