@@ -6,6 +6,11 @@ config.json
 videos.jsonl
 datasets.jsonl
 
+# Partial downloads (kept for resuming)
+.cdvl_partial_*
+*.partial
+*.partial.meta
+
 # Python cache
 __pycache__/
 *.py[cod]
